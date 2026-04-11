@@ -47,3 +47,19 @@ npm run dev
   - `stop-at-epoch` でepoch終端停止予約
   - `resume` で再開
   - epoch終端で checkpoint と preview プレースホルダ生成
+
+## テスト
+
+```bash
+cd backend
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+pytest -q
+```
+
+このテストで以下を確認します。
+- プロジェクト作成/一覧
+- 収集(scan)→取り込み(import)→タグ生成
+- 学習進行と完了
+- previewタイムライン取得
