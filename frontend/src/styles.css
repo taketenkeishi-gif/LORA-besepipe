@@ -112,8 +112,8 @@ input {
 }
 
 .projectMeta {
-  display: flex;
-  justify-content: flex-start;
+  display: grid;
+  gap: 4px;
 }
 
 .actions {

@@ -1,26 +1,158 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
 from ..db import get_conn
-
 from ..schemas import TrainingControlIn, TrainingStartIn
 
 router = APIRouter(prefix="/training", tags=["training"])
+RUNNER_LOCK = threading.Lock()
+RUNNER_THREADS: dict[int, threading.Thread] = {}
+SLOTS = ["face", "bust", "full", "bg"]
 
 
-def _ensure_project(project_id: int) -> None:
+def _ensure_project(project_id: int) -> dict:
     conn = get_conn()
-    row = conn.execute("SELECT id FROM projects WHERE id = ?", (project_id,)).fetchone()
+    row = conn.execute(
+        "SELECT id, outputs_dir FROM projects WHERE id = ?",
+        (project_id,),
+    ).fetchone()
     conn.close()
     if row is None:
         raise HTTPException(status_code=404, detail=f"project not found: {project_id}")
+    return dict(row)
 
 
 def _set_project_status(conn, project_id: int, status: str) -> None:
     conn.execute("UPDATE projects SET status = ? WHERE id = ?", (status, project_id))
+
+
+def _latest_run(conn, project_id: int):
+    return conn.execute(
+        """
+        SELECT id, status, stop_mode, current_epoch, current_step, total_epochs, steps_per_epoch
+        FROM training_runs
+        WHERE project_id = ? ORDER BY id DESC LIMIT 1
+        """,
+        (project_id,),
+    ).fetchone()
+
+
+def _ensure_runner(project_id: int) -> None:
+    with RUNNER_LOCK:
+        alive = RUNNER_THREADS.get(project_id)
+        if alive is not None and alive.is_alive():
+            return
+        t = threading.Thread(target=_runner_loop, args=(project_id,), daemon=True)
+        RUNNER_THREADS[project_id] = t
+        t.start()
+
+
+def _write_preview_and_checkpoint(conn, project_id: int, epoch: int) -> str:
+    row = conn.execute("SELECT outputs_dir FROM projects WHERE id = ?", (project_id,)).fetchone()
+    outputs_dir = Path(row["outputs_dir"])
+    checkpoints_dir = outputs_dir / "checkpoints"
+    previews_dir = outputs_dir / "previews"
+    checkpoints_dir.mkdir(parents=True, exist_ok=True)
+    previews_dir.mkdir(parents=True, exist_ok=True)
+
+    ckpt_path = checkpoints_dir / f"project_{project_id}_e{epoch}.safetensors"
+    ckpt_path.write_text("placeholder checkpoint", encoding="utf-8")
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO checkpoints(project_id, file_path, epoch, step, mark)
+        VALUES (?, ?, ?, ?, 'none')
+        """,
+        (project_id, str(ckpt_path), epoch, 0),
+    )
+    checkpoint_id = cur.lastrowid
+    for slot in SLOTS:
+        p = previews_dir / f"e{epoch}_{slot}.txt"
+        p.write_text(f"preview placeholder for epoch {epoch}, slot {slot}", encoding="utf-8")
+        cur.execute(
+            """
+            INSERT INTO preview_samples(checkpoint_id, slot, image_path)
+            VALUES (?, ?, ?)
+            """,
+            (checkpoint_id, slot, str(p)),
+        )
+    return str(ckpt_path)
+
+
+def _runner_loop(project_id: int) -> None:
+    while True:
+        conn = get_conn()
+        row = _latest_run(conn, project_id)
+        if row is None or row["status"] != "training":
+            conn.close()
+            return
+
+        epoch = int(row["current_epoch"])
+        step = int(row["current_step"])
+        total_epochs = int(row["total_epochs"])
+        steps_per_epoch = int(row["steps_per_epoch"])
+        stop_mode = row["stop_mode"]
+
+        if epoch >= total_epochs:
+            conn.execute(
+                """
+                UPDATE training_runs
+                SET status = 'completed', updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (row["id"],),
+            )
+            _set_project_status(conn, project_id, "completed")
+            conn.commit()
+            conn.close()
+            return
+
+        # 疑似学習: 1 step進める
+        time.sleep(0.5)
+        step += 1
+        if step >= steps_per_epoch:
+            epoch += 1
+            step = 0
+            latest_ckpt = _write_preview_and_checkpoint(conn, project_id, epoch)
+            conn.execute(
+                """
+                UPDATE training_runs
+                SET latest_checkpoint_path = ?, current_epoch = ?, current_step = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (latest_ckpt, epoch, step, row["id"]),
+            )
+            if stop_mode == "epoch":
+                conn.execute(
+                    """
+                    UPDATE training_runs
+                    SET status = 'paused', updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (row["id"],),
+                )
+                _set_project_status(conn, project_id, "paused")
+                conn.commit()
+                conn.close()
+                return
+        else:
+            conn.execute(
+                """
+                UPDATE training_runs
+                SET current_epoch = ?, current_step = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (epoch, step, row["id"]),
+            )
+
+        conn.commit()
+        conn.close()
 
 
 @router.post("/start")
@@ -30,21 +162,32 @@ def start(payload: TrainingStartIn) -> dict:
     cur = conn.cursor()
     cur.execute(
         """
-        INSERT INTO training_runs(project_id, status, stop_mode, latest_checkpoint_path, config_json)
-        VALUES (?, 'training', NULL, NULL, ?)
+        INSERT INTO training_runs(
+            project_id, status, stop_mode, latest_checkpoint_path, config_json,
+            current_epoch, current_step, total_epochs, steps_per_epoch
+        )
+        VALUES (?, 'training', NULL, NULL, ?, 0, 0, ?, ?)
         """,
-        (payload.project_id, json.dumps({"preset_id": payload.preset_id})),
+        (
+            payload.project_id,
+            json.dumps({"preset_id": payload.preset_id}),
+            payload.total_epochs,
+            payload.steps_per_epoch,
+        ),
     )
     run_id = cur.lastrowid
     _set_project_status(conn, payload.project_id, "training")
     conn.commit()
     conn.close()
+    _ensure_runner(payload.project_id)
     return {
         "run_id": run_id,
         "project_id": payload.project_id,
         "preset_id": payload.preset_id,
         "status": "training",
-        "message": "training run created (CLI実行は未実装)",
+        "total_epochs": payload.total_epochs,
+        "steps_per_epoch": payload.steps_per_epoch,
+        "message": "training started (simulated worker)",
     }
 
 
@@ -53,13 +196,7 @@ def stop_now(payload: TrainingControlIn) -> dict:
     _ensure_project(payload.project_id)
     conn = get_conn()
     cur = conn.cursor()
-    row = cur.execute(
-        """
-        SELECT id FROM training_runs
-        WHERE project_id = ? ORDER BY id DESC LIMIT 1
-        """,
-        (payload.project_id,),
-    ).fetchone()
+    row = _latest_run(conn, payload.project_id)
     if row is None:
         conn.close()
         raise HTTPException(status_code=400, detail="no training run")
@@ -78,7 +215,7 @@ def stop_now(payload: TrainingControlIn) -> dict:
         "project_id": payload.project_id,
         "mode": "stop_now",
         "status": "paused",
-        "message": "stop_now accepted (安全停止ロジックは未実装)",
+        "message": "stopped at nearest safe point",
     }
 
 
@@ -87,32 +224,28 @@ def stop_at_epoch(payload: TrainingControlIn) -> dict:
     _ensure_project(payload.project_id)
     conn = get_conn()
     cur = conn.cursor()
-    row = cur.execute(
-        """
-        SELECT id FROM training_runs
-        WHERE project_id = ? ORDER BY id DESC LIMIT 1
-        """,
-        (payload.project_id,),
-    ).fetchone()
+    row = _latest_run(conn, payload.project_id)
     if row is None:
         conn.close()
         raise HTTPException(status_code=400, detail="no training run")
+    if row["status"] != "training":
+        conn.close()
+        raise HTTPException(status_code=400, detail="run is not training")
     cur.execute(
         """
         UPDATE training_runs
-        SET status = 'paused', stop_mode = 'epoch', updated_at = CURRENT_TIMESTAMP
+        SET stop_mode = 'epoch', updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         """,
         (row["id"],),
     )
-    _set_project_status(conn, payload.project_id, "paused")
     conn.commit()
     conn.close()
     return {
         "project_id": payload.project_id,
         "mode": "stop_at_epoch",
-        "status": "paused",
-        "message": "stop_at_epoch accepted (epoch終端停止ロジックは未実装)",
+        "status": "training",
+        "message": "epoch stop reserved",
     }
 
 
@@ -121,16 +254,13 @@ def resume(payload: TrainingControlIn) -> dict:
     _ensure_project(payload.project_id)
     conn = get_conn()
     cur = conn.cursor()
-    row = cur.execute(
-        """
-        SELECT id FROM training_runs
-        WHERE project_id = ? ORDER BY id DESC LIMIT 1
-        """,
-        (payload.project_id,),
-    ).fetchone()
+    row = _latest_run(conn, payload.project_id)
     if row is None:
         conn.close()
         raise HTTPException(status_code=400, detail="no training run")
+    if row["status"] == "completed":
+        conn.close()
+        raise HTTPException(status_code=400, detail="run already completed")
     cur.execute(
         """
         UPDATE training_runs
@@ -142,10 +272,11 @@ def resume(payload: TrainingControlIn) -> dict:
     _set_project_status(conn, payload.project_id, "training")
     conn.commit()
     conn.close()
+    _ensure_runner(payload.project_id)
     return {
         "project_id": payload.project_id,
         "status": "training",
-        "message": "resume accepted (checkpoint再開ロジックは未実装)",
+        "message": "resume accepted",
     }
 
 
@@ -155,7 +286,8 @@ def status(project_id: int) -> dict:
     conn = get_conn()
     row = conn.execute(
         """
-        SELECT id, status, stop_mode, latest_checkpoint_path, started_at, updated_at
+        SELECT id, status, stop_mode, latest_checkpoint_path, started_at, updated_at,
+               current_epoch, current_step, total_epochs, steps_per_epoch
         FROM training_runs
         WHERE project_id = ?
         ORDER BY id DESC
@@ -171,6 +303,8 @@ def status(project_id: int) -> dict:
             "status": "idle",
             "epoch": 0,
             "step": 0,
+            "total_epochs": 0,
+            "steps_per_epoch": 0,
             "stop_mode": None,
             "latest_checkpoint_path": None,
             "message": "no run yet",
@@ -179,11 +313,13 @@ def status(project_id: int) -> dict:
         "project_id": project_id,
         "run_id": row["id"],
         "status": row["status"],
-        "epoch": 0,
-        "step": 0,
+        "epoch": row["current_epoch"],
+        "step": row["current_step"],
+        "total_epochs": row["total_epochs"],
+        "steps_per_epoch": row["steps_per_epoch"],
         "stop_mode": row["stop_mode"],
         "latest_checkpoint_path": row["latest_checkpoint_path"],
         "started_at": row["started_at"],
         "updated_at": row["updated_at"],
-        "message": "stub status from sqlite",
+        "message": "status from simulated worker",
     }

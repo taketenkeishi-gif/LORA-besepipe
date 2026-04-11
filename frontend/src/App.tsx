@@ -18,6 +18,10 @@ type TrainingStatus = {
   run_id: number | null;
   status: string;
   stop_mode: string | null;
+  epoch: number;
+  step: number;
+  total_epochs: number;
+  steps_per_epoch: number;
   message: string;
 };
 
@@ -37,6 +41,10 @@ export default function App() {
 
   useEffect(() => {
     void refresh();
+    const id = window.setInterval(() => {
+      void refresh();
+    }, 2000);
+    return () => window.clearInterval(id);
   }, []);
 
   async function refresh() {
@@ -66,7 +74,16 @@ export default function App() {
         } catch {
           return [
             p.id,
-            { run_id: null, status: "unknown", stop_mode: null, message: "fetch failed" }
+            {
+              run_id: null,
+              status: "unknown",
+              stop_mode: null,
+              epoch: 0,
+              step: 0,
+              total_epochs: 0,
+              steps_per_epoch: 0,
+              message: "fetch failed"
+            }
           ] as const;
         }
       })
@@ -192,6 +209,10 @@ export default function App() {
                   <span className="muted">
                     training: {statuses[p.id]?.status ?? "loading"} / stop_mode:{" "}
                     {statuses[p.id]?.stop_mode ?? "-"}
+                  </span>
+                  <span className="muted">
+                    progress: {statuses[p.id]?.epoch ?? 0}/{statuses[p.id]?.total_epochs ?? 0} epoch,{" "}
+                    step {statuses[p.id]?.step ?? 0}/{statuses[p.id]?.steps_per_epoch ?? 0}
                   </span>
                 </div>
                 <div className="row actions">

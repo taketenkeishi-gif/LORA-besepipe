@@ -31,6 +31,8 @@ class CollectorImportIn(BaseModel):
 class TrainingStartIn(BaseModel):
     project_id: int
     preset_id: int | None = None
+    total_epochs: int = Field(default=5, ge=1, le=1000)
+    steps_per_epoch: int = Field(default=20, ge=1, le=100000)
 
 
 class TrainingControlIn(BaseModel):
@@ -39,4 +41,3 @@ class TrainingControlIn(BaseModel):
 
 class GenerateTagsIn(BaseModel):
     project_id: int
-
