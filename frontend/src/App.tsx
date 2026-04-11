@@ -21,6 +21,11 @@ type TrainingStatus = {
   message: string;
 };
 
+type ScanResult = {
+  detected: number;
+  items: { id: number }[];
+};
+
 const API_BASE = "http://127.0.0.1:8000";
 
 export default function App() {
@@ -107,6 +112,45 @@ export default function App() {
     }
   }
 
+  async function quickScanImportAndTag(projectId: number) {
+    setError("");
+    try {
+      const scanRes = await fetch(`${API_BASE}/collector/scan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: projectId,
+          url: "https://example.com/mock-collection"
+        })
+      });
+      if (!scanRes.ok) throw new Error("scan failed");
+      const scanJson: ScanResult = await scanRes.json();
+      const selected = scanJson.items.slice(0, 5).map((x) => x.id);
+
+      const importRes = await fetch(`${API_BASE}/collector/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project_id: projectId,
+          selected_ids: selected,
+          naming_template: "{title}_{index}"
+        })
+      });
+      if (!importRes.ok) throw new Error("import failed");
+
+      const tagRes = await fetch(`${API_BASE}/tags/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId })
+      });
+      if (!tagRes.ok) throw new Error("tags generate failed");
+
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   return (
     <main className="page">
       <section className="card">
@@ -174,6 +218,12 @@ export default function App() {
                     className="btn info"
                   >
                     Resume
+                  </button>
+                  <button
+                    onClick={() => quickScanImportAndTag(p.id)}
+                    className="btn accent"
+                  >
+                    Quick Scan+Import+Tag
                   </button>
                 </div>
               </li>

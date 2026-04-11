@@ -79,6 +79,11 @@ input {
   color: #ffffff;
 }
 
+.btn.accent {
+  background: #4c1d95;
+  color: #ffffff;
+}
+
 .error {
   color: #b91c1c;
   margin: 10px 0 0;

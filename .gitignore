@@ -12,3 +12,5 @@ Thumbs.db
 workspace.db
 _pdf_extracted.txt
 Lo Ra制作ワークベンチ 企画書.pdf
+projects/*
+!projects/.gitkeep
