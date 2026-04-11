@@ -36,6 +36,11 @@ npm run dev
 フロント画面:
 - `http://127.0.0.1:5173`
 
+## BATで起動（Windows）
+
+- `start_web.bat`: ブラウザ版を起動（backend + frontend）
+- `start_desktop.bat`: デスクトップ版を起動（backend + frontend + Electron）
+
 ## 現在動く範囲
 
 - プロジェクト作成/一覧
