@@ -69,6 +69,16 @@ input {
   color: #0f172a;
 }
 
+.btn.warning {
+  background: #b91c1c;
+  color: #ffffff;
+}
+
+.btn.info {
+  background: #0369a1;
+  color: #ffffff;
+}
+
 .error {
   color: #b91c1c;
   margin: 10px 0 0;
@@ -86,9 +96,23 @@ input {
   padding: 10px;
   border-radius: 10px;
   border: 1px solid #e2e8f0;
+  display: grid;
+  gap: 8px;
+}
+
+.projectTop {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  gap: 8px;
+}
+
+.projectMeta {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.actions {
+  flex-wrap: wrap;
 }
 
 @media (max-width: 640px) {
@@ -96,4 +120,3 @@ input {
     flex-direction: column;
   }
 }
-

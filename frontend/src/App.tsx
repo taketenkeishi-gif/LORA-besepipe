@@ -14,11 +14,19 @@ type Project = {
   outputs_dir: string;
 };
 
+type TrainingStatus = {
+  run_id: number | null;
+  status: string;
+  stop_mode: string | null;
+  message: string;
+};
+
 const API_BASE = "http://127.0.0.1:8000";
 
 export default function App() {
   const [health, setHealth] = useState<string>("checking");
   const [projects, setProjects] = useState<Project[]>([]);
+  const [statuses, setStatuses] = useState<Record<number, TrainingStatus>>({});
   const [name, setName] = useState<string>("");
   const [error, setError] = useState<string>("");
 
@@ -36,10 +44,29 @@ export default function App() {
       const p = await fetch(`${API_BASE}/projects`);
       const pJson: Project[] = await p.json();
       setProjects(pJson);
+      await loadStatuses(pJson);
     } catch (e) {
       setHealth("offline");
       setError(`API接続エラー: ${String(e)}`);
     }
+  }
+
+  async function loadStatuses(items: Project[]) {
+    const entries = await Promise.all(
+      items.map(async (p) => {
+        try {
+          const res = await fetch(`${API_BASE}/training/status?project_id=${p.id}`);
+          const json: TrainingStatus = await res.json();
+          return [p.id, json] as const;
+        } catch {
+          return [
+            p.id,
+            { run_id: null, status: "unknown", stop_mode: null, message: "fetch failed" }
+          ] as const;
+        }
+      })
+    );
+    setStatuses(Object.fromEntries(entries));
   }
 
   async function createProject() {
@@ -56,6 +83,24 @@ export default function App() {
         throw new Error(body?.detail ?? "作成に失敗しました");
       }
       setName("");
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function callTrainingAction(path: string, projectId: number) {
+    setError("");
+    try {
+      const res = await fetch(`${API_BASE}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_id: projectId })
+      });
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body?.detail ?? "操作に失敗しました");
+      }
       await refresh();
     } catch (e) {
       setError(String(e));
@@ -95,8 +140,42 @@ export default function App() {
           <ul className="projectList">
             {projects.map((p) => (
               <li key={p.id} className="projectItem">
-                <strong>{p.name}</strong>
-                <span className="muted">status: {p.status}</span>
+                <div className="projectTop">
+                  <strong>{p.name}</strong>
+                  <span className="muted">project status: {p.status}</span>
+                </div>
+                <div className="projectMeta">
+                  <span className="muted">
+                    training: {statuses[p.id]?.status ?? "loading"} / stop_mode:{" "}
+                    {statuses[p.id]?.stop_mode ?? "-"}
+                  </span>
+                </div>
+                <div className="row actions">
+                  <button
+                    onClick={() => callTrainingAction("/training/start", p.id)}
+                    className="btn primary"
+                  >
+                    Start
+                  </button>
+                  <button
+                    onClick={() => callTrainingAction("/training/stop-at-epoch", p.id)}
+                    className="btn secondary"
+                  >
+                    Stop@Epoch
+                  </button>
+                  <button
+                    onClick={() => callTrainingAction("/training/stop-now", p.id)}
+                    className="btn warning"
+                  >
+                    StopNow
+                  </button>
+                  <button
+                    onClick={() => callTrainingAction("/training/resume", p.id)}
+                    className="btn info"
+                  >
+                    Resume
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -105,4 +184,3 @@ export default function App() {
     </main>
   );
 }
-
