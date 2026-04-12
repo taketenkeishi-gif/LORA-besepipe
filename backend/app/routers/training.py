@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import base64
 import threading
 import time
 from datetime import datetime
@@ -16,6 +17,7 @@ router = APIRouter(prefix="/training", tags=["training"])
 RUNNER_LOCK = threading.Lock()
 RUNNER_THREADS: dict[int, threading.Thread] = {}
 SLOTS = ["face", "bust", "full", "bg"]
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
 
 
 def _ensure_project(project_id: int) -> dict:
@@ -366,3 +368,32 @@ def status(project_id: int) -> dict:
         "updated_at": row["updated_at"],
         "message": "status from simulated worker",
     }
+
+
+@router.get("/dataset-preview")
+def dataset_preview(project_id: int, train_data_dir: str = "") -> dict:
+    _ensure_project(project_id)
+    target = train_data_dir.strip()
+    if not target:
+        conn = get_conn()
+        row = conn.execute("SELECT dataset_dir FROM projects WHERE id = ?", (project_id,)).fetchone()
+        conn.close()
+        target = str(row["dataset_dir"]) if row else ""
+    d = Path(target)
+    if not d.exists():
+        return {"project_id": project_id, "image_path": None, "thumbnail_url": None}
+    files = [p for p in d.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_EXTS]
+    if not files:
+        return {"project_id": project_id, "image_path": None, "thumbnail_url": None}
+    first = sorted(files)[0]
+    try:
+        with Image.open(first) as im:
+            im = im.convert("RGB")
+            im.thumbnail((320, 320))
+            from io import BytesIO
+            buf = BytesIO()
+            im.save(buf, format="JPEG", quality=82)
+            thumb = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+    except OSError:
+        thumb = None
+    return {"project_id": project_id, "image_path": str(first), "thumbnail_url": thumb}

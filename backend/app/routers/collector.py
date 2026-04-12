@@ -207,6 +207,8 @@ def _scan_from_url_live(project: dict, project_id: int, url: str, limit: int) ->
             local = _save_downloaded_image(project_id, img_raw, stem, i)
             item = _append_candidate_from_file(project, project_id, local, stem, i)
             item["source_url"] = img_url
+            if _is_non_dataset_like_image(item):
+                continue
             out.append(item)
         except Exception:
             continue
@@ -274,10 +276,44 @@ def _scan_from_pixiv_artwork(project: dict, project_id: int, artwork_url: str, l
             local = _save_downloaded_image(project_id, img_raw, stem, i)
             item = _append_candidate_from_file(project, project_id, local, stem, i)
             item["source_url"] = img_url
+            if _is_non_dataset_like_image(item):
+                continue
             out.append(item)
         except Exception:
             continue
     return out
+
+
+def _is_non_dataset_like_image(item: dict) -> bool:
+    title = str(item.get("title", "")).lower()
+    src = str(item.get("source_url", "")).lower()
+    w = int(item.get("width", 0))
+    h = int(item.get("height", 0))
+    if w <= 0 or h <= 0:
+        return True
+    area = w * h
+    ratio = max(w, h) / max(1, min(w, h))
+
+    # tiny images and extreme banners are usually UI assets or logos.
+    if area < 512 * 512:
+        return True
+    if ratio > 3.2:
+        return True
+
+    noise_tokens = (
+        "logo",
+        "icon",
+        "button",
+        "avatar",
+        "sprite",
+        "emoji",
+        "header",
+        "footer",
+        "banner",
+        "ads",
+        "favicon",
+    )
+    return any(t in title or t in src for t in noise_tokens)
 
 
 def _make_cached_thumb(src: Path, title: str, idx: int) -> str:

@@ -281,6 +281,30 @@ label {
   background: #edf6ff;
 }
 
+.projectRowBlock {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.projectPickBtn {
+  border: none;
+  background: transparent;
+  text-align: left;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.projectActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .workflowGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -542,14 +566,37 @@ label {
 
 .formGrid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 
 .trainingSection .row.wrap {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
   gap: 10px;
+}
+
+.paramPairGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.datasetPreviewBox {
+  border: 1px solid #c8d5e6;
+  border-radius: 8px;
+  padding: 8px;
+  background: #f8fbff;
+  display: grid;
+  gap: 6px;
+}
+
+.datasetPreviewImg {
+  width: 140px;
+  height: 140px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #d3dfeb;
 }
 
 .trainingSection input,

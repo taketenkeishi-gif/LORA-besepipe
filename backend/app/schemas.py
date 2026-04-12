@@ -20,6 +20,14 @@ class ProjectOut(BaseModel):
     library_dir: str
 
 
+class ProjectUpdateIn(BaseModel):
+    project_type: str = Field(pattern="^(character|style)$")
+
+
+class ProjectDuplicateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
 class CollectorScanIn(BaseModel):
     project_id: int
     url: str
