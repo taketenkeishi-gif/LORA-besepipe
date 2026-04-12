@@ -6,7 +6,7 @@ $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $runtimeDir = Join-Path $root ".runtime"
 New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
 
-& (Join-Path $root "scripts\start_web.ps1")
+& (Join-Path $root "scripts\start_web.ps1") -Restart
 
 function Ensure-DesktopDeps($rootPath) {
   $desktop = Join-Path $rootPath "desktop"

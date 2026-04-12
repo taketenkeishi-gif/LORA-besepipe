@@ -18,7 +18,7 @@ from ..schemas import CollectorImportIn, CollectorScanIn, DropUrlIn, RepeatFolde
 
 router = APIRouter(prefix="/collector", tags=["collector"])
 SCAN_CACHE: dict[int, list[dict]] = {}
-IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
 
 
 def _slugify(text: str) -> str:
@@ -123,6 +123,88 @@ def _extract_image_url_from_html(base_url: str, html: str) -> str | None:
         if m and m.group(1):
             return urljoin(base_url, m.group(1))
     return None
+
+
+def _extract_image_urls_from_html(base_url: str, html: str, limit: int) -> list[str]:
+    urls: list[str] = []
+    patterns = [
+        r"""<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']""",
+        r"""<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']""",
+        r"""<img[^>]+src=["']([^"']+)["']""",
+    ]
+    for pattern in patterns:
+        for m in re.finditer(pattern, html, flags=re.IGNORECASE):
+            candidate = m.group(1).strip()
+            if not candidate:
+                continue
+            full = urljoin(base_url, candidate)
+            if full not in urls:
+                urls.append(full)
+            if len(urls) >= limit:
+                return urls
+    return urls
+
+
+def _fetch_url_bytes(url: str, referer: str | None = None) -> tuple[bytes, str]:
+    headers = {"User-Agent": "LoRA-Workbench/1.0"}
+    if referer:
+        headers["Referer"] = referer
+    req = Request(url, headers=headers)
+    with urlopen(req, timeout=15) as resp:
+        ctype = (resp.headers.get("Content-Type") or "").lower()
+        raw = resp.read()
+    return raw, ctype
+
+
+def _save_downloaded_image(project_id: int, raw: bytes, title_seed: str, i: int) -> Path:
+    kind = imghdr.what(None, h=raw)
+    ext = _ext_from_kind(kind)
+    safe = _slugify(title_seed) or f"url_{i}"
+    dst = _drop_cache_dir(project_id) / f"url_{i}_{safe}{ext}"
+    dst.write_bytes(raw)
+    return dst
+
+
+def _scan_from_url_live(project: dict, project_id: int, url: str, limit: int) -> list[dict]:
+    target = url.strip()
+    if not target:
+        return []
+    parsed = urlparse(target)
+    if parsed.scheme not in {"http", "https"}:
+        return []
+
+    try:
+        raw, ctype = _fetch_url_bytes(target)
+    except Exception:
+        return []
+
+    candidate_urls: list[str] = []
+    if "image/" in ctype:
+        candidate_urls = [target]
+    else:
+        try:
+            html = raw.decode("utf-8", errors="ignore")
+        except Exception:
+            html = ""
+        candidate_urls = _extract_image_urls_from_html(target, html, limit=max(limit * 2, 12))
+
+    out: list[dict] = []
+    for i, img_url in enumerate(candidate_urls, start=1):
+        if len(out) >= limit:
+            break
+        try:
+            img_raw, img_type = _fetch_url_bytes(img_url, referer=target)
+            kind = imghdr.what(None, h=img_raw)
+            if not kind and "image/" not in img_type:
+                continue
+            stem = Path(urlparse(img_url).path).stem or f"image_{i}"
+            local = _save_downloaded_image(project_id, img_raw, stem, i)
+            item = _append_candidate_from_file(project, project_id, local, stem, i)
+            item["source_url"] = img_url
+            out.append(item)
+        except Exception:
+            continue
+    return out
 
 
 def _make_cached_thumb(src: Path, title: str, idx: int) -> str:
@@ -314,7 +396,23 @@ def scan(payload: CollectorScanIn) -> dict:
             "message": f"dataset_base({project['project_type']}) から候補を取得",
         }
 
-    # 2) fallback: URL由来のモック候補
+    # 2) URLから実画像を収集
+    live_items = _scan_from_url_live(project, payload.project_id, payload.url, limit=payload.limit)
+    if live_items:
+        live_items = _filter_items(live_items, keyword=keyword, project_type=str(project["project_type"]))
+        live_items = live_items[: payload.limit]
+    if live_items:
+        SCAN_CACHE[payload.project_id] = live_items
+        return {
+            "project_id": payload.project_id,
+            "url": payload.url,
+            "mode": "url_live",
+            "detected": len(live_items),
+            "items": live_items,
+            "message": "live URL scan completed",
+        }
+
+    # 3) fallback: URL由来のモック候補
     parsed = urlparse(payload.url)
     seed = _slugify(Path(parsed.path).stem or parsed.netloc or "image")
     items = []

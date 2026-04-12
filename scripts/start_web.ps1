@@ -1,4 +1,6 @@
-param()
+param(
+  [switch]$Restart
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -7,6 +9,12 @@ $runtimeDir = Join-Path $root ".runtime"
 $logDir = Join-Path $runtimeDir "logs"
 New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+
+if ($Restart) {
+  Write-Host "[restart] stopping existing backend/frontend"
+  & (Join-Path $root "scripts\stop_all.ps1")
+  Start-Sleep -Milliseconds 400
+}
 
 function Test-Endpoint($url) {
   try {

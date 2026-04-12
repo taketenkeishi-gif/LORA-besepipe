@@ -48,6 +48,7 @@ function createWindow() {
       nodeIntegration: false
     }
   });
+  win.webContents.session.clearCache().catch(() => {});
   win.loadURL(FRONTEND_URL);
 }
 
@@ -64,4 +65,3 @@ app.whenReady().then(async () => {
 app.on("window-all-closed", () => {
   app.quit();
 });
-
