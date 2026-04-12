@@ -546,6 +546,18 @@ label {
   gap: 10px;
 }
 
+.trainingSection .row.wrap {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 10px;
+}
+
+.trainingSection input,
+.formGrid input {
+  min-width: 0;
+  font-family: "Consolas", "Segoe UI", sans-serif;
+}
+
 .statusList {
   margin: 0;
   padding-left: 0;

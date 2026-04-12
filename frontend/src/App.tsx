@@ -159,7 +159,14 @@ export default function App() {
 
   async function prepareRepeatFolder() {
     if (!selectedProject) return;
-    try { await apiPost("/collector/prepare-repeat-folder", { project_id: selectedProject.id, repeats: repeatCount, folder_title: repeatFolderTitle }); setNotice("学習フォルダを作成しました"); }
+    try {
+      const r = await apiPost<{ folder: string; copied_images: number }>("/collector/prepare-repeat-folder", {
+        project_id: selectedProject.id,
+        repeats: repeatCount,
+        folder_title: repeatFolderTitle
+      });
+      setNotice(`学習フォルダを作成: ${r.folder} (${r.copied_images}件コピー)`);
+    }
     catch (e) { setError(`作成失敗: ${String(e)}`); }
   }
 

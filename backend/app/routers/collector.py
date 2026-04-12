@@ -767,8 +767,10 @@ def remove_candidates_legacy(payload: CandidateRemoveIn) -> dict:
 def prepare_repeat_folder(payload: RepeatFolderIn) -> dict:
     project = _ensure_project(payload.project_id)
     dataset_dir = Path(project["dataset_dir"])
+    library_dir = Path(project["library_dir"])
     title = _slugify(payload.folder_title)
-    folder = dataset_dir / f"{payload.repeats}_{title}"
+    library_dir.mkdir(parents=True, exist_ok=True)
+    folder = library_dir / f"{payload.repeats}_{title}"
     folder.mkdir(parents=True, exist_ok=True)
 
     copied = 0
