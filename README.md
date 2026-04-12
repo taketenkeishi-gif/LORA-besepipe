@@ -49,8 +49,12 @@ npm run dev
 ## 現在動く範囲
 
 - プロジェクト作成/一覧
-- mock画像収集（scan）とdataset取り込み（import）
-- placeholderタグ生成（captions配下にtxt）
+- 画像候補収集（dataset_base優先）とdataset取り込み（import）
+  - 候補サムネイル表示
+  - 画像ファイルのドラッグ&ドロップ追加（Explorer）
+  - 画像URLのドラッグ&ドロップ追加（Web）
+  - `tag:` `aspect:` `minw:` `minh:` フィルタ
+- タグ生成（WD14スクリプト設定時は既存caption優先）
 - 外部連携設定
   - Python / kohya / ComfyUI / WD14 のパス保存
   - 初回アクセス時に自動検出結果を自動入力
@@ -58,16 +62,16 @@ npm run dev
   - データセット補完ベース（`dataset_base_dir`）を設定可能
   - 自動検出（autodetect）
   - 接続状態チェック（path存在 + pythonバージョン確認）
-- 疑似学習ジョブ
-  - `start` でepoch/step進行
+- 学習ジョブ（疑似実行だが進捗可視化を強化）
+  - `start` でepoch/step進行（`rank/alpha/repeats/save_every_n_epochs/output_name/resolution` 設定対応）
   - `stop-now` で即停止
   - `stop-at-epoch` でepoch終端停止予約
   - `resume` で再開
-  - epoch終端で checkpoint と preview プレースホルダ生成
-- 収集機能
-  - `dataset_base_dir/character` または `dataset_base_dir/style` を優先スキャン
-  - 候補画像をサムネイル付きで表示
-  - 一致候補がない場合はURLベースのフォールバック候補を生成
+  - `total_steps / done_steps / progress_percent / eta_seconds` 表示
+  - epoch終端で checkpoint と preview 画像をタイムラインへ追加
+- プレビュー
+  - Positive/Negative プロンプトを事前保存
+  - エポックごとの軽量プレビュー履歴表示
 
 UIは以下メニューで利用できます。
 - Dashboard

@@ -39,12 +39,24 @@ class RepeatFolderIn(BaseModel):
     folder_title: str = Field(default="default", min_length=1, max_length=120)
 
 
+class DropUrlIn(BaseModel):
+    project_id: int
+    url: str = Field(min_length=5, max_length=2000)
+
+
 class TrainingStartIn(BaseModel):
     project_id: int
     preset_id: int | None = None
     epochs: int = Field(default=5, ge=1, le=1000)
     repeats: int = Field(default=5, ge=1, le=1000)
     alpha: float = Field(default=4.0, ge=0.1, le=128.0)
+    rank: int = Field(default=16, ge=1, le=512)
+    save_every_n_epochs: int = Field(default=1, ge=1, le=1000)
+    output_name: str = Field(default="lora_output", min_length=1, max_length=120)
+    base_checkpoint_path: str = ""
+    train_data_dir: str = ""
+    reg_data_dir: str = ""
+    resolution: int = Field(default=512, ge=256, le=2048)
 
 
 class TrainingControlIn(BaseModel):
@@ -71,3 +83,13 @@ class ToolPathsOut(BaseModel):
     wd14_script: str
     temp_dir: str
     dataset_base_dir: str
+
+
+class PreviewPromptsIn(BaseModel):
+    positive_prompt: str = ""
+    negative_prompt: str = ""
+
+
+class PreviewPromptsOut(BaseModel):
+    positive_prompt: str
+    negative_prompt: str

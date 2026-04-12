@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { DragEvent, useEffect, useMemo, useState } from "react";
 
 const API_BASE = "http://127.0.0.1:8000";
 
@@ -24,6 +24,10 @@ type TrainingStatus = {
   step: number;
   total_epochs: number;
   steps_per_epoch: number;
+  total_steps?: number;
+  done_steps?: number;
+  progress_percent?: number;
+  eta_seconds?: number | null;
 };
 
 type ScanItem = {
@@ -60,6 +64,11 @@ type PreviewTimelineItem = {
   sample_previews?: Record<string, string>;
 };
 
+type PreviewPrompts = {
+  positive_prompt: string;
+  negative_prompt: string;
+};
+
 export default function App() {
   const [tab, setTab] = useState<TabId>("dashboard");
   const [apiHealth, setApiHealth] = useState<string>("確認中");
@@ -88,7 +97,19 @@ export default function App() {
   const [timeline, setTimeline] = useState<PreviewTimelineItem[]>([]);
   const [epochs, setEpochs] = useState<number>(5);
   const [alpha, setAlpha] = useState<number>(4);
+  const [rank, setRank] = useState<number>(16);
+  const [saveEvery, setSaveEvery] = useState<number>(1);
   const [trainRepeats, setTrainRepeats] = useState<number>(5);
+  const [outputName, setOutputName] = useState<string>("lora_output");
+  const [baseCkpt, setBaseCkpt] = useState<string>("");
+  const [trainDir, setTrainDir] = useState<string>("");
+  const [regDir, setRegDir] = useState<string>("");
+  const [resolution, setResolution] = useState<number>(512);
+
+  const [prompts, setPrompts] = useState<PreviewPrompts>({
+    positive_prompt: "",
+    negative_prompt: ""
+  });
 
   const [toolPaths, setToolPaths] = useState<ToolPaths>({
     python_exe: "",
@@ -119,6 +140,12 @@ export default function App() {
     }
   }, [selectedProjectId]);
 
+  useEffect(() => {
+    if (!selectedProject) return;
+    if (!trainDir) setTrainDir(selectedProject.dataset_dir);
+    if (!regDir) setRegDir(selectedProject.captions_dir);
+  }, [selectedProject, trainDir, regDir]);
+
   async function apiGet<T>(path: string): Promise<T> {
     const res = await fetch(`${API_BASE}${path}`);
     if (!res.ok) throw new Error(`GET ${path} failed`);
@@ -142,7 +169,7 @@ export default function App() {
   }
 
   async function refreshAll() {
-    await Promise.all([refreshRuntime(), loadIntegrations()]);
+    await Promise.all([refreshRuntime(), loadIntegrations(), loadPreviewPrompts()]);
   }
 
   async function refreshRuntime() {
@@ -156,6 +183,9 @@ export default function App() {
       );
       setStatuses(Object.fromEntries(entries));
       if (selectedProjectId === null && list.length > 0) setSelectedProjectId(list[0].id);
+      if (selectedProjectId !== null) {
+        await loadProjectRuntime(selectedProjectId);
+      }
     } catch (e) {
       setApiHealth("オフライン");
       setError(`API接続エラー: ${String(e)}`);
@@ -179,6 +209,25 @@ export default function App() {
       setIntegrationStatus(status);
     } catch {
       setIntegrationStatus(null);
+    }
+  }
+
+  async function loadPreviewPrompts() {
+    try {
+      const p = await apiGet<PreviewPrompts>("/settings/preview-prompts");
+      setPrompts(p);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function savePreviewPrompts() {
+    clearMessages();
+    try {
+      await apiPost<PreviewPrompts>("/settings/preview-prompts", prompts, "PUT");
+      setNotice("軽量プレビュー用プロンプトを保存しました。");
+    } catch (e) {
+      setError(String(e));
     }
   }
 
@@ -221,9 +270,62 @@ export default function App() {
       });
       setScanItems(result.items);
       setSelectedScanIds(result.items.slice(0, 12).map((x) => x.id));
-      setNotice(`候補画像 ${result.detected} 件を取得 (${result.mode})。サムネイルを見て選択してください。`);
+      setNotice(`候補画像 ${result.detected} 件を取得 (${result.mode})`);
     } catch (e) {
       setError(`取得失敗: ${String(e)}`);
+    }
+  }
+
+  async function onDropFiles(ev: DragEvent<HTMLDivElement>) {
+    if (!selectedProject) return;
+    ev.preventDefault();
+    clearMessages();
+    const files = Array.from(ev.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
+    if (files.length === 0) {
+      const maybeUrl = extractDroppedUrl(ev);
+      if (maybeUrl) {
+        await dropUrlAsCandidate(selectedProject.id, maybeUrl.trim());
+      }
+      return;
+    }
+    try {
+      const form = new FormData();
+      form.append("project_id", String(selectedProject.id));
+      for (const f of files) form.append("files", f);
+      const res = await fetch(`${API_BASE}/collector/drop-files`, { method: "POST", body: form });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.detail ?? "drop failed");
+      setScanItems(json.items || []);
+      setNotice(`${json.added_count ?? files.length} 件を候補に追加しました。`);
+    } catch (e) {
+      setError(`ドラッグ&ドロップ追加失敗: ${String(e)}`);
+    }
+  }
+
+  function extractDroppedUrl(ev: DragEvent<HTMLDivElement>): string {
+    const uriList = ev.dataTransfer.getData("text/uri-list");
+    if (uriList?.trim()) return uriList.trim().split("\n")[0].trim();
+
+    const plain = ev.dataTransfer.getData("text/plain");
+    if (plain?.trim().startsWith("http")) return plain.trim();
+
+    const html = ev.dataTransfer.getData("text/html");
+    if (html?.trim()) {
+      const m = html.match(/https?:\/\/[^"' >]+/i);
+      if (m?.[0]) return m[0];
+    }
+    return "";
+  }
+
+  async function dropUrlAsCandidate(projectId: number, url: string) {
+    try {
+      const json = await apiPost<{ items: ScanItem[]; added_count: number }>("/collector/drop-url", { project_id: projectId, url });
+      setScanItems(json.items || []);
+      setNotice("URL画像を候補に追加しました。");
+    } catch (e) {
+      setScanUrl(url);
+      setNotice("URLは収集欄に反映しました。画像URLでない場合は「候補画像取得」を実行してください。");
+      setError(`URL追加失敗: ${String(e)}`);
     }
   }
 
@@ -236,7 +338,7 @@ export default function App() {
         selected_ids: selectedScanIds,
         naming_template: namingTemplate
       });
-      setNotice("取り込み完了。必要なら繰り返しフォルダを作成してください。");
+      setNotice("取り込み完了。");
       await refreshRuntime();
     } catch (e) {
       setError(`取り込み失敗: ${String(e)}`);
@@ -252,9 +354,9 @@ export default function App() {
         repeats: repeatCount,
         folder_title: repeatFolderTitle
       });
-      setNotice(`繰り返しフォルダを作成しました: ${res.folder} (${res.copied_images}枚コピー)`);
+      setNotice(`繰り返しフォルダ作成: ${res.folder} (${res.copied_images}枚)`);
     } catch (e) {
-      setError(`繰り返しフォルダ作成失敗: ${String(e)}`);
+      setError(`失敗: ${String(e)}`);
     }
   }
 
@@ -264,7 +366,6 @@ export default function App() {
     try {
       const res = await apiPost<{ generated_count: number }>("/tags/generate", { project_id: selectedProject.id });
       setNotice(`タグ生成完了: ${res.generated_count} 件`);
-      await refreshRuntime();
     } catch (e) {
       setError(`タグ生成失敗: ${String(e)}`);
     }
@@ -281,9 +382,16 @@ export default function App() {
         project_id: projectId,
         epochs,
         repeats: trainRepeats,
-        alpha
+        alpha,
+        rank,
+        save_every_n_epochs: saveEvery,
+        output_name: outputName,
+        base_checkpoint_path: baseCkpt,
+        train_data_dir: trainDir,
+        reg_data_dir: regDir,
+        resolution
       });
-      setNotice(`学習開始。1epochあたりstepは自動計算: ${res.steps_per_epoch}`);
+      setNotice(`学習開始。step/epoch自動計算: ${res.steps_per_epoch}`);
       await refreshRuntime();
     } catch (e) {
       setError(`学習開始失敗: ${String(e)}`);
@@ -337,37 +445,37 @@ export default function App() {
     );
   }
 
+  function etaText(sec?: number | null) {
+    if (sec == null) return "計算中";
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    return `${h}h ${m}m`;
+  }
+
+  const currentStatus = selectedProject ? statuses[selectedProject.id] : undefined;
+
   return (
     <div className="layout">
       <aside className="sidebar">
         <h1 className="logo">LoRA制作ワークベンチ</h1>
         <nav className="menu">
-          <button className={tab === "dashboard" ? "menuBtn active" : "menuBtn"} onClick={() => setTab("dashboard")}>
-            ダッシュボード
-          </button>
-          <button className={tab === "projects" ? "menuBtn active" : "menuBtn"} onClick={() => setTab("projects")}>
-            プロジェクト管理
-          </button>
-          <button className={tab === "dataset" ? "menuBtn active" : "menuBtn"} onClick={() => setTab("dataset")}>
-            データセット作成
-          </button>
-          <button className={tab === "training" ? "menuBtn active" : "menuBtn"} onClick={() => setTab("training")}>
-            学習制御
-          </button>
-          <button
-            className={tab === "integrations" ? "menuBtn active" : "menuBtn"}
-            onClick={() => setTab("integrations")}
-          >
-            外部連携設定
-          </button>
-          <button className={tab === "guide" ? "menuBtn active" : "menuBtn"} onClick={() => setTab("guide")}>
-            使い方ガイド
-          </button>
+          {[
+            ["dashboard", "ダッシュボード"],
+            ["projects", "プロジェクト管理"],
+            ["dataset", "データセット作成"],
+            ["training", "学習制御"],
+            ["integrations", "外部連携設定"],
+            ["guide", "使い方ガイド"]
+          ].map(([id, label]) => (
+            <button key={id} className={tab === id ? "menuBtn active" : "menuBtn"} onClick={() => setTab(id as TabId)}>
+              {label}
+            </button>
+          ))}
         </nav>
         <div className="healthCard">
           <div>API状態: {apiHealth}</div>
           <button className="btn secondary small" onClick={() => void refreshAll()}>
-            最新状態に更新
+            更新
           </button>
         </div>
       </aside>
@@ -385,11 +493,11 @@ export default function App() {
                 <div className="statValue">{projects.length}</div>
               </div>
               <div className="statBox">
-                <div className="statLabel">学習中ジョブ</div>
+                <div className="statLabel">学習中</div>
                 <div className="statValue">{Object.values(statuses).filter((s) => s.status === "training").length}</div>
               </div>
               <div className="statBox">
-                <div className="statLabel">連携チェックOK</div>
+                <div className="statLabel">連携OK</div>
                 <div className="statValue">{integrationStatus ? Object.values(integrationStatus.checks).filter((x) => x.ok).length : 0}</div>
               </div>
             </div>
@@ -400,7 +508,7 @@ export default function App() {
           <section className="panel">
             <h2>プロジェクト管理</h2>
             <div className="row">
-              <input value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="例: style_demo" />
+              <input value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} placeholder="project_name" />
               <select value={newProjectType} onChange={(e) => setNewProjectType(e.target.value as "character" | "style")}>
                 <option value="character">Character LoRA</option>
                 <option value="style">Style LoRA</option>
@@ -413,9 +521,7 @@ export default function App() {
               {projects.map((p) => (
                 <button key={p.id} className={selectedProjectId === p.id ? "projectRow selected" : "projectRow"} onClick={() => setSelectedProjectId(p.id)}>
                   <span>{p.name}</span>
-                  <span>
-                    {p.project_type} / {statuses[p.id]?.status ?? "idle"}
-                  </span>
+                  <span>{p.project_type} / {statuses[p.id]?.status ?? "idle"}</span>
                 </button>
               ))}
             </div>
@@ -428,54 +534,57 @@ export default function App() {
             {!selectedProject ? (
               <p className="muted">プロジェクトを選択してください。</p>
             ) : (
-              <>
-                <p className="guideLine">対象: {selectedProject.name} ({selectedProject.project_type})</p>
-                <div className="card">
-                  <label>収集元URL<input value={scanUrl} onChange={(e) => setScanUrl(e.target.value)} /></label>
-                  <div className="row">
-                    <label>キーワード<input value={scanKeyword} onChange={(e) => setScanKeyword(e.target.value)} placeholder="face closeup texture" /></label>
-                    <label>タグ絞り込み<input value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} placeholder="face など" /></label>
-                  </div>
-                  <div className="row">
-                    <label>アスペクト
-                      <select value={aspectFilter} onChange={(e) => setAspectFilter(e.target.value)}>
-                        <option value="all">all</option>
-                        <option value="portrait">portrait</option>
-                        <option value="landscape">landscape</option>
-                        <option value="square">square</option>
-                      </select>
-                    </label>
-                    <label>最小幅<input type="number" value={minW} onChange={(e) => setMinW(Number(e.target.value || 0))} /></label>
-                    <label>最小高さ<input type="number" value={minH} onChange={(e) => setMinH(Number(e.target.value || 0))} /></label>
-                  </div>
-                  <button className="btn info" onClick={runScan}>1) 候補画像を取得</button>
-                  <div className="row wrap">
-                    <button className="btn secondary" onClick={() => setSelectedScanIds(scanItems.map((x) => x.id))}>すべて選択</button>
-                    <button className="btn secondary" onClick={() => setSelectedScanIds([])}>すべて解除</button>
-                    <span className="muted">選択中: {selectedScanIds.length} 件</span>
-                  </div>
-                  <div className="chips">
-                    {scanItems.map((i) => (
-                      <button key={i.id} className={selectedScanIds.includes(i.id) ? "thumbCard active" : "thumbCard"} onClick={() => toggleScanSelection(i.id)}>
-                        {i.thumbnail_url ? <img src={i.thumbnail_url} alt={i.title} /> : <div className="thumbFallback">NO IMAGE</div>}
-                        <span className="thumbTitle">{i.title}</span>
-                        <span className="thumbMeta">{i.width}x{i.height} / {i.aspect}</span>
-                        <span className="thumbMeta">{(i.tags || []).join(", ")}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="row">
-                    <input value={namingTemplate} onChange={(e) => setNamingTemplate(e.target.value)} placeholder="{title}_{index}" />
-                    <button className="btn primary" onClick={runImport}>2) 取り込み</button>
-                    <button className="btn accent" onClick={runTags}>3) タグ生成</button>
-                  </div>
-                  <div className="row">
-                    <label>繰り返し数<input type="number" value={repeatCount} onChange={(e) => setRepeatCount(Number(e.target.value || 1))} /></label>
-                    <label>フォルダ名<input value={repeatFolderTitle} onChange={(e) => setRepeatFolderTitle(e.target.value)} placeholder="character_name" /></label>
-                    <button className="btn primary" onClick={prepareRepeatFolder}>4) 繰り返しフォルダ作成</button>
-                  </div>
+              <div className="card">
+                <label>収集元URL<input value={scanUrl} onChange={(e) => setScanUrl(e.target.value)} /></label>
+                <div className="row">
+                  <label>キーワード<input value={scanKeyword} onChange={(e) => setScanKeyword(e.target.value)} /></label>
+                  <label>タグ絞り込み<input value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} /></label>
                 </div>
-              </>
+                <div className="row">
+                  <label>Aspect
+                    <select value={aspectFilter} onChange={(e) => setAspectFilter(e.target.value)}>
+                      <option value="all">all</option>
+                      <option value="portrait">portrait</option>
+                      <option value="landscape">landscape</option>
+                      <option value="square">square</option>
+                    </select>
+                  </label>
+                  <label>minW<input type="number" value={minW} onChange={(e) => setMinW(Number(e.target.value || 0))} /></label>
+                  <label>minH<input type="number" value={minH} onChange={(e) => setMinH(Number(e.target.value || 0))} /></label>
+                </div>
+                <button className="btn info" onClick={runScan}>1) 候補画像取得</button>
+                <div className="dropZone" onDrop={onDropFiles} onDragOver={(e) => e.preventDefault()}>
+                  ここに画像ファイルをドラッグ&ドロップ（Explorer / Web）。Webからは画像URLドロップも可能です。
+                </div>
+                <div className="row wrap">
+                  <button className="btn secondary" onClick={() => setSelectedScanIds(scanItems.map((x) => x.id))}>すべて選択</button>
+                  <button className="btn secondary" onClick={() => setSelectedScanIds([])}>すべて解除</button>
+                  <span className="muted">選択中: {selectedScanIds.length} 件</span>
+                </div>
+                <div className="chips">
+                  {scanItems.map((i) => (
+                    <button key={i.id} className={selectedScanIds.includes(i.id) ? "thumbCard active" : "thumbCard"} onClick={() => toggleScanSelection(i.id)}>
+                      {i.thumbnail_url ? <img src={i.thumbnail_url} alt={i.title} onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='200'%3E%3Crect width='100%25' height='100%25' fill='%23dbe6f4'/%3E%3Ctext x='16' y='104' fill='%234c5f7a' font-size='14'%3Epreview unavailable%3C/text%3E%3C/svg%3E";
+                      }} /> : <div className="thumbFallback">NO IMAGE</div>}
+                      <span className="thumbTitle">{i.title}</span>
+                      <span className="thumbMeta">{i.width}x{i.height} / {i.aspect}</span>
+                      <span className="thumbMeta">{(i.tags || []).join(", ")}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="row">
+                  <input value={namingTemplate} onChange={(e) => setNamingTemplate(e.target.value)} placeholder="{title}_{index}" />
+                  <button className="btn primary" onClick={runImport}>2) 取り込み</button>
+                  <button className="btn accent" onClick={runTags}>3) タグ生成</button>
+                </div>
+                <div className="row">
+                  <label>繰り返し数<input type="number" value={repeatCount} onChange={(e) => setRepeatCount(Number(e.target.value || 1))} /></label>
+                  <label>フォルダ名<input value={repeatFolderTitle} onChange={(e) => setRepeatFolderTitle(e.target.value)} /></label>
+                  <button className="btn primary" onClick={prepareRepeatFolder}>4) {`<repeats>_<title>`} 作成</button>
+                </div>
+              </div>
             )}
           </section>
         )}
@@ -488,26 +597,42 @@ export default function App() {
             ) : (
               <>
                 <div className="card">
-                  <p className="guideLine">steps/epoch は自動計算です（画像枚数 × repeats）。手動入力は不要です。</p>
                   <div className="row">
                     <label>epochs<input type="number" value={epochs} onChange={(e) => setEpochs(Number(e.target.value || 1))} /></label>
+                    <label>rank<input type="number" value={rank} onChange={(e) => setRank(Number(e.target.value || 1))} /></label>
                     <label>alpha<input type="number" step="0.1" value={alpha} onChange={(e) => setAlpha(Number(e.target.value || 1))} /></label>
                     <label>repeats<input type="number" value={trainRepeats} onChange={(e) => setTrainRepeats(Number(e.target.value || 1))} /></label>
+                    <label>保存間隔(epoch)<input type="number" value={saveEvery} onChange={(e) => setSaveEvery(Number(e.target.value || 1))} /></label>
+                    <label>解像度<input type="number" value={resolution} onChange={(e) => setResolution(Number(e.target.value || 512))} /></label>
+                  </div>
+                  <div className="row">
+                    <label>出力名<input value={outputName} onChange={(e) => setOutputName(e.target.value)} /></label>
+                    <label>学習元Checkpoint<input value={baseCkpt} onChange={(e) => setBaseCkpt(e.target.value)} /></label>
+                  </div>
+                  <div className="row">
+                    <label>教師画像フォルダ<input value={trainDir} onChange={(e) => setTrainDir(e.target.value)} /></label>
+                    <label>正則化画像フォルダ<input value={regDir} onChange={(e) => setRegDir(e.target.value)} /></label>
+                  </div>
+                  <div className="row">
+                    <label>プレビュー Positive<input value={prompts.positive_prompt} onChange={(e) => setPrompts({ ...prompts, positive_prompt: e.target.value })} /></label>
+                    <label>プレビュー Negative<input value={prompts.negative_prompt} onChange={(e) => setPrompts({ ...prompts, negative_prompt: e.target.value })} /></label>
+                    <button className="btn secondary" onClick={savePreviewPrompts}>プロンプト保存</button>
                   </div>
                   <div className="row wrap">
                     <button className="btn primary" onClick={() => startTraining(selectedProject.id)}>学習開始</button>
-                    <button className="btn secondary" onClick={() => trainingAction("/training/stop-at-epoch", "epoch終了後に停止します")}>epoch区切り停止</button>
-                    <button className="btn warning" onClick={() => trainingAction("/training/stop-now", "すぐ停止しました")}>すぐ停止</button>
-                    <button className="btn info" onClick={() => trainingAction("/training/resume", "再開しました")}>再開</button>
+                    <button className="btn secondary" onClick={() => trainingAction("/training/stop-at-epoch", "epoch区切り停止予約")}>epoch区切り停止</button>
+                    <button className="btn warning" onClick={() => trainingAction("/training/stop-now", "すぐ停止")}>すぐ停止</button>
+                    <button className="btn info" onClick={() => trainingAction("/training/resume", "再開")}>再開</button>
                   </div>
                   <p className="muted">
-                    状態: {statuses[selectedProject.id]?.status ?? "idle"} / 進捗: {statuses[selectedProject.id]?.epoch ?? 0}/
-                    {statuses[selectedProject.id]?.total_epochs ?? 0} / step {statuses[selectedProject.id]?.step ?? 0}/
-                    {statuses[selectedProject.id]?.steps_per_epoch ?? 0}
+                    状態: {currentStatus?.status ?? "idle"} / epoch: {currentStatus?.epoch ?? 0}/{currentStatus?.total_epochs ?? 0} / step: {currentStatus?.done_steps ?? 0}/{currentStatus?.total_steps ?? 0} / 進捗: {currentStatus?.progress_percent ?? 0}% / 残り目安: {etaText(currentStatus?.eta_seconds)}
                   </p>
+                  <div className="progressBar">
+                    <div className="progressFill" style={{ width: `${Math.min(100, Math.max(0, currentStatus?.progress_percent ?? 0))}%` }} />
+                  </div>
                 </div>
                 <div className="card">
-                  <h3>軽量プレビュー履歴</h3>
+                  <h3>軽量プレビュー履歴（ライブ）</h3>
                   {timeline.length === 0 ? (
                     <p className="muted">まだプレビューがありません。</p>
                   ) : (
@@ -515,11 +640,10 @@ export default function App() {
                       {timeline.map((t) => (
                         <div key={t.checkpoint_id} className="timelineItem">
                           <strong>Epoch {t.epoch}</strong>
-                          <span className="muted">mark: {t.mark}</span>
                           <div className="thumbGrid4">
                             {Object.entries(t.sample_previews || {}).map(([slot, img]) => (
                               <div key={slot} className="smallThumb">
-                                <img src={img} alt={`${slot}`} />
+                                <img src={img} alt={slot} />
                                 <span>{slot}</span>
                               </div>
                             ))}
@@ -553,19 +677,7 @@ export default function App() {
               </div>
             </div>
             <div className="card">
-              <h3>状態</h3>
-              {!integrationStatus ? (
-                <p className="muted">未取得</p>
-              ) : (
-                <ul className="statusList">
-                  {integrationRow("Python", "python_exe")}
-                  {integrationRow("kohya", "kohya_root")}
-                  {integrationRow("ComfyUI", "comfyui_root")}
-                  {integrationRow("WD14", "wd14_script")}
-                  {integrationRow("temp_dir", "temp_dir")}
-                  {integrationRow("dataset_base", "dataset_base_dir")}
-                </ul>
-              )}
+              {!integrationStatus ? <p className="muted">未取得</p> : <ul className="statusList">{integrationRow("Python", "python_exe")}{integrationRow("kohya", "kohya_root")}{integrationRow("ComfyUI", "comfyui_root")}{integrationRow("WD14", "wd14_script")}{integrationRow("temp_dir", "temp_dir")}{integrationRow("dataset_base", "dataset_base_dir")}</ul>}
             </div>
           </section>
         )}
@@ -574,11 +686,10 @@ export default function App() {
           <section className="panel">
             <h2>使い方ガイド</h2>
             <ol className="guideList">
-              <li>外部連携設定で `dataset_base_dir` と `temp_dir` を確認する</li>
-              <li>プロジェクト作成で Character/Style を選ぶ</li>
-              <li>データセット作成でフィルター/タグ絞り込みして取り込み</li>
-              <li>繰り返しフォルダ（例: `5_subject`）を作成する</li>
-              <li>学習制御で epochs / alpha / repeats を設定して開始する</li>
+              <li>外部連携設定で各パスを確認</li>
+              <li>データセット作成ページで候補収集・D&D・絞り込み・取り込み</li>
+              <li>繰り返しフォルダ（例: 5_subject）を作成</li>
+              <li>学習制御ページでパラメータ設定・開始・ライブ監視</li>
             </ol>
           </section>
         )}

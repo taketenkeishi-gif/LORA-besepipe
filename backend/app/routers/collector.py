@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import base64
+import imghdr
 import re
 import shutil
 import subprocess
 from pathlib import Path
 from urllib.parse import quote, urlparse
+from urllib.request import Request, urlopen
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
 
 from ..db import get_conn
-from ..schemas import CollectorImportIn, CollectorScanIn, RepeatFolderIn
+from ..schemas import CollectorImportIn, CollectorScanIn, DropUrlIn, RepeatFolderIn
 
 router = APIRouter(prefix="/collector", tags=["collector"])
 SCAN_CACHE: dict[int, list[dict]] = {}
@@ -71,6 +73,42 @@ def _thumb_cache_dir() -> Path:
     d = Path(temp_dir) / "thumb_cache"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def _drop_cache_dir(project_id: int) -> Path:
+    temp_dir = _settings_value("temp_dir").strip()
+    if not temp_dir:
+        temp_dir = str(Path(__file__).resolve().parents[3] / ".runtime" / "tmp")
+    d = Path(temp_dir) / "drop_cache" / str(project_id)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _append_candidate_from_file(project: dict, project_id: int, src: Path, title: str, next_id: int) -> dict:
+    try:
+        with Image.open(src) as im:
+            w, h = im.size
+    except (OSError, UnidentifiedImageError):
+        w, h = (0, 0)
+    return {
+        "id": next_id,
+        "title": title,
+        "width": w,
+        "height": h,
+        "aspect": _aspect(max(w, 1), max(h, 1)),
+        "source_url": str(src),
+        "source_file": str(src),
+        "thumbnail_url": _make_cached_thumb(src, title, next_id),
+        "tags": _pretag_file(src, str(project["project_type"])),
+    }
+
+
+def _ext_from_kind(kind: str | None) -> str:
+    if kind == "jpeg":
+        return ".jpg"
+    if kind in {"png", "gif", "bmp", "webp"}:
+        return f".{kind}"
+    return ".png"
 
 
 def _make_cached_thumb(src: Path, title: str, idx: int) -> str:
@@ -351,6 +389,78 @@ def import_selected(payload: CollectorImportIn) -> dict:
         "files": imported,
         "naming_template": payload.naming_template,
         "message": "dataset import completed",
+    }
+
+
+@router.post("/drop-files")
+async def drop_files(project_id: int = Form(...), files: list[UploadFile] = File(...)) -> dict:
+    project = _ensure_project(project_id)
+    cache = SCAN_CACHE.get(project_id, [])
+    next_id = (max((int(x["id"]) for x in cache), default=0) + 1) if cache else 1
+    added: list[dict] = []
+
+    cache_dir = _drop_cache_dir(project_id)
+    for f in files:
+        name = f.filename or f"drop_{next_id}.png"
+        ext = Path(name).suffix.lower()
+        if ext not in IMAGE_EXTS:
+            continue
+        safe_name = _slugify(Path(name).stem) + ext
+        dst = cache_dir / f"{next_id}_{safe_name}"
+        raw = await f.read()
+        dst.write_bytes(raw)
+        title = Path(name).stem or f"drop_{next_id}"
+        item = _append_candidate_from_file(project, project_id, dst, title, next_id)
+        added.append(item)
+        next_id += 1
+
+    SCAN_CACHE[project_id] = cache + added
+    return {
+        "project_id": project_id,
+        "added_count": len(added),
+        "items": SCAN_CACHE[project_id],
+        "message": "dropped files added to candidates",
+    }
+
+
+@router.post("/drop-url")
+def drop_url(payload: DropUrlIn) -> dict:
+    project = _ensure_project(payload.project_id)
+    cache = SCAN_CACHE.get(payload.project_id, [])
+    next_id = (max((int(x["id"]) for x in cache), default=0) + 1) if cache else 1
+
+    parsed = urlparse(payload.url.strip())
+    if parsed.scheme not in {"http", "https"}:
+        raise HTTPException(status_code=400, detail="only http/https URLs are supported")
+
+    try:
+        req = Request(payload.url.strip(), headers={"User-Agent": "LoRA-Workbench/1.0"})
+        with urlopen(req, timeout=15) as resp:
+            ctype = (resp.headers.get("Content-Type") or "").lower()
+            raw = resp.read()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"failed to fetch URL: {exc}") from exc
+
+    if not raw:
+        raise HTTPException(status_code=400, detail="empty response body")
+
+    kind = imghdr.what(None, h=raw)
+    if not kind and "image/" not in ctype:
+        raise HTTPException(status_code=400, detail=f"URL is not an image: {ctype or 'unknown content-type'}")
+
+    ext = _ext_from_kind(kind)
+    base = Path(parsed.path).stem or f"url_{next_id}"
+    safe_name = _slugify(base) + ext
+    dst = _drop_cache_dir(payload.project_id) / f"{next_id}_{safe_name}"
+    dst.write_bytes(raw)
+
+    item = _append_candidate_from_file(project, payload.project_id, dst, base, next_id)
+    SCAN_CACHE[payload.project_id] = cache + [item]
+    return {
+        "project_id": payload.project_id,
+        "added_count": 1,
+        "items": SCAN_CACHE[payload.project_id],
+        "message": "dropped URL image added to candidates",
     }
 
 

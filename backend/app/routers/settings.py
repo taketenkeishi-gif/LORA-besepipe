@@ -7,11 +7,12 @@ from pathlib import Path
 from fastapi import APIRouter
 
 from ..db import get_conn
-from ..schemas import ToolPathsIn, ToolPathsOut
+from ..schemas import PreviewPromptsIn, PreviewPromptsOut, ToolPathsIn, ToolPathsOut
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 SETTINGS_KEYS = ("python_exe", "kohya_root", "comfyui_root", "wd14_script", "temp_dir", "dataset_base_dir")
+PROMPT_KEYS = ("positive_prompt", "negative_prompt")
 
 
 def _read_paths() -> dict[str, str]:
@@ -22,10 +23,40 @@ def _read_paths() -> dict[str, str]:
     return {k: found.get(k, "") for k in SETTINGS_KEYS}
 
 
+def _read_prompts() -> dict[str, str]:
+    conn = get_conn()
+    rows = conn.execute("SELECT key, value FROM app_settings WHERE key IN (?, ?)", PROMPT_KEYS).fetchall()
+    conn.close()
+    found = {str(r["key"]): str(r["value"]) for r in rows}
+    return {
+        "positive_prompt": found.get("positive_prompt", "masterpiece, best quality, 1girl, portrait"),
+        "negative_prompt": found.get("negative_prompt", "low quality, blurry, bad anatomy"),
+    }
+
+
 def _write_paths(payload: dict[str, str]) -> None:
     conn = get_conn()
     cur = conn.cursor()
     for key in SETTINGS_KEYS:
+        val = str(payload.get(key, "")).strip()
+        cur.execute(
+            """
+            INSERT INTO app_settings(key, value, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (key, val),
+        )
+    conn.commit()
+    conn.close()
+
+
+def _write_prompts(payload: dict[str, str]) -> None:
+    conn = get_conn()
+    cur = conn.cursor()
+    for key in PROMPT_KEYS:
         val = str(payload.get(key, "")).strip()
         cur.execute(
             """
@@ -189,3 +220,15 @@ def integrations_status() -> dict:
         "dataset_base_dir": _check_dir(paths["dataset_base_dir"]),
     }
     return {"paths": paths, "checks": checks}
+
+
+@router.get("/preview-prompts", response_model=PreviewPromptsOut)
+def get_preview_prompts() -> PreviewPromptsOut:
+    prompts = _read_prompts()
+    return PreviewPromptsOut(**prompts)
+
+
+@router.put("/preview-prompts", response_model=PreviewPromptsOut)
+def update_preview_prompts(payload: PreviewPromptsIn) -> PreviewPromptsOut:
+    _write_prompts(payload.model_dump())
+    return PreviewPromptsOut(**_read_prompts())

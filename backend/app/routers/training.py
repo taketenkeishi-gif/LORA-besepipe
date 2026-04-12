@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -55,6 +56,13 @@ def _ensure_runner(project_id: int) -> None:
 
 
 def _write_preview_and_checkpoint(conn, project_id: int, epoch: int) -> str:
+    prompt_row = conn.execute(
+        "SELECT key, value FROM app_settings WHERE key IN ('positive_prompt','negative_prompt')"
+    ).fetchall()
+    prompt_map = {str(r["key"]): str(r["value"]) for r in prompt_row}
+    pos = prompt_map.get("positive_prompt", "")
+    neg = prompt_map.get("negative_prompt", "")
+
     row = conn.execute("SELECT outputs_dir FROM projects WHERE id = ?", (project_id,)).fetchone()
     outputs_dir = Path(row["outputs_dir"])
     checkpoints_dir = outputs_dir / "checkpoints"
@@ -80,6 +88,8 @@ def _write_preview_and_checkpoint(conn, project_id: int, epoch: int) -> str:
         d.text((24, 24), f"Project {project_id}", fill=(240, 240, 240))
         d.text((24, 56), f"Epoch {epoch}", fill=(240, 240, 240))
         d.text((24, 88), f"Slot {slot}", fill=(240, 240, 240))
+        d.text((24, 120), f"+ {pos[:48]}", fill=(220, 240, 220))
+        d.text((24, 148), f"- {neg[:48]}", fill=(240, 220, 220))
         img.save(p, format="PNG")
         cur.execute(
             """
@@ -326,6 +336,18 @@ def status(project_id: int) -> dict:
             "latest_checkpoint_path": None,
             "message": "no run yet",
         }
+    total_steps = int(row["total_epochs"]) * int(row["steps_per_epoch"])
+    done_steps = int(row["current_epoch"]) * int(row["steps_per_epoch"]) + int(row["current_step"])
+    progress_percent = (done_steps / total_steps * 100.0) if total_steps > 0 else 0.0
+    eta_seconds = None
+    try:
+        started_at = datetime.fromisoformat(str(row["started_at"]).replace(" ", "T"))
+        elapsed = max(1.0, (datetime.now() - started_at).total_seconds())
+        speed = done_steps / elapsed if done_steps > 0 else 0.0
+        if speed > 0:
+            eta_seconds = int(max(0.0, (total_steps - done_steps) / speed))
+    except ValueError:
+        eta_seconds = None
     return {
         "project_id": project_id,
         "run_id": row["id"],
@@ -334,6 +356,10 @@ def status(project_id: int) -> dict:
         "step": row["current_step"],
         "total_epochs": row["total_epochs"],
         "steps_per_epoch": row["steps_per_epoch"],
+        "total_steps": total_steps,
+        "done_steps": done_steps,
+        "progress_percent": round(progress_percent, 2),
+        "eta_seconds": eta_seconds,
         "stop_mode": row["stop_mode"],
         "latest_checkpoint_path": row["latest_checkpoint_path"],
         "started_at": row["started_at"],
