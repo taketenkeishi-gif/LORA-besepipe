@@ -43,6 +43,7 @@ npm run dev
 - `stop_all.bat`: backend / frontend / desktop 関連プロセスを停止
 
 不安定な時は `stop_all.bat` 実行後に `start_web.bat` または `start_desktop.bat` を実行してください。
+起動ログは `.runtime/logs/` に出力されます。
 
 ## 現在動く範囲
 
@@ -51,6 +52,7 @@ npm run dev
 - placeholderタグ生成（captions配下にtxt）
 - 外部連携設定
   - Python / kohya / ComfyUI / WD14 のパス保存
+  - 初回アクセス時に自動検出結果を自動入力
   - 自動検出（autodetect）
   - 接続状態チェック（path存在 + pythonバージョン確認）
 - 疑似学習ジョブ

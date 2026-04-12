@@ -4,6 +4,7 @@ import base64
 import re
 from pathlib import Path
 from urllib.parse import urlparse
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException
 
@@ -25,6 +26,24 @@ def _slugify(text: str) -> str:
     return v.strip("_") or "image"
 
 
+def _thumbnail_data_uri(title: str, i: int) -> str:
+    hue = (i * 31) % 360
+    svg = f"""
+<svg xmlns='http://www.w3.org/2000/svg' width='256' height='256'>
+  <defs>
+    <linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>
+      <stop offset='0%' stop-color='hsl({hue},70%,62%)'/>
+      <stop offset='100%' stop-color='hsl({(hue + 40) % 360},70%,42%)'/>
+    </linearGradient>
+  </defs>
+  <rect width='256' height='256' fill='url(#g)'/>
+  <rect x='12' y='12' width='232' height='232' rx='16' fill='rgba(255,255,255,0.18)'/>
+  <text x='20' y='214' fill='white' font-size='18' font-family='Segoe UI, sans-serif'>{title}</text>
+</svg>
+"""
+    return f"data:image/svg+xml;utf8,{quote(svg)}"
+
+
 def _ensure_project(project_id: int) -> dict:
     conn = get_conn()
     row = conn.execute(
@@ -44,14 +63,16 @@ def scan(payload: CollectorScanIn) -> dict:
     seed = _slugify(Path(parsed.path).stem or parsed.netloc or "image")
     items = []
     for i in range(1, 13):
+        title = f"{seed}_{i:02d}"
         items.append(
             {
                 "id": i,
-                "title": f"{seed}_{i:02d}",
+                "title": title,
                 "width": 1024,
                 "height": 1024,
                 "aspect": "square",
                 "source_url": payload.url,
+                "thumbnail_url": _thumbnail_data_uri(title, i),
             }
         )
     SCAN_CACHE[payload.project_id] = items

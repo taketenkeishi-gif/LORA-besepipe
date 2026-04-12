@@ -2,42 +2,42 @@ param()
 
 $ErrorActionPreference = "SilentlyContinue"
 
+$root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$runtimeDir = Join-Path $root ".runtime"
+
+function Kill-Tree($targetProcId) {
+  if ($targetProcId -and $targetProcId -match "^\d+$") {
+    cmd /c "taskkill /PID $targetProcId /T /F" | Out-Null
+  }
+}
+
+function Stop-ByPidFile($name) {
+  $file = Join-Path $runtimeDir "$name.pid"
+  if (Test-Path $file) {
+    $procPid = (Get-Content $file -ErrorAction SilentlyContinue | Select-Object -First 1).Trim()
+    Kill-Tree $procPid
+    Remove-Item $file -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Stop-PortOwner($port) {
-  $lines = cmd /c "netstat -ano | findstr :$port"
-  if (-not $lines) { return }
+  $raw = cmd /c "netstat -ano | findstr :$port"
+  if (-not $raw) { return }
+  $lines = ($raw -split "`r?`n") | Where-Object { $_ -and $_.Trim().Length -gt 0 }
   foreach ($line in $lines) {
     $cols = ($line -replace "\s+", " ").Trim().Split(" ")
     if ($cols.Length -lt 5) { continue }
     $targetPid = $cols[$cols.Length - 1]
-    if ($targetPid -match "^\d+$") {
-      cmd /c "taskkill /PID $targetPid /T /F" | Out-Null
-    }
+    Kill-Tree $targetPid
   }
 }
 
-# Kill listeners first (backend / frontend ports)
-Stop-PortOwner 8000
+Stop-ByPidFile "desktop"
+Stop-ByPidFile "frontend"
+Stop-ByPidFile "backend"
+
+# PIDファイルがない/壊れた場合のフォールバック
 Stop-PortOwner 5173
-
-# Kill common desktop-related residual processes
-$patterns = @(
-  "npm run start",
-  "electron .",
-  "desktop\\main.cjs",
-  "lora-workbench-desktop"
-)
-
-$procs = Get-CimInstance Win32_Process | Where-Object {
-  $cmd = $_.CommandLine
-  if (-not $cmd) { return $false }
-  foreach ($p in $patterns) {
-    if ($cmd -like "*$p*") { return $true }
-  }
-  return $false
-}
-
-foreach ($p in $procs) {
-  cmd /c "taskkill /PID $($p.ProcessId) /T /F" | Out-Null
-}
+Stop-PortOwner 8000
 
 Write-Host "[ok] stop_all complete."

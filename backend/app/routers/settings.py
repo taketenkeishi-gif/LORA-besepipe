@@ -43,11 +43,14 @@ def _write_paths(payload: dict[str, str]) -> None:
 
 def _autodetect() -> dict[str, str]:
     result = {k: "" for k in SETTINGS_KEYS}
+    project_root = Path(__file__).resolve().parents[3]
+
     python_path = shutil.which("python") or ""
     if python_path:
         result["python_exe"] = str(Path(python_path))
 
     candidates = [
+        project_root / "external_tools" / "kohya_ss",
         Path.home() / "kohya_ss",
         Path("C:/kohya_ss"),
         Path("C:/tools/kohya_ss"),
@@ -59,6 +62,7 @@ def _autodetect() -> dict[str, str]:
             break
 
     comfy_candidates = [
+        project_root / "external_tools" / "ComfyUI",
         Path.home() / "ComfyUI",
         Path("C:/ComfyUI"),
         Path("D:/ComfyUI"),
@@ -69,9 +73,12 @@ def _autodetect() -> dict[str, str]:
             break
 
     if result["kohya_root"]:
-        wd14 = Path(result["kohya_root"]) / "finetune" / "tag_images_by_wd14_tagger.py"
+        wd14 = Path(result["kohya_root"]) / "sd-scripts" / "finetune" / "tag_images_by_wd14_tagger.py"
         if wd14.exists():
             result["wd14_script"] = str(wd14.resolve())
+    wd14_local = project_root / "external_tools" / "WD14py" / "tag_images_by_wd14_tagger.py"
+    if wd14_local.exists():
+        result["wd14_script"] = str(wd14_local.resolve())
 
     return result
 
@@ -114,7 +121,23 @@ def _check_file(path: str) -> dict:
 
 @router.get("/tool-paths", response_model=ToolPathsOut)
 def get_tool_paths() -> ToolPathsOut:
-    return ToolPathsOut(**_read_paths())
+    current = _read_paths()
+    detected = _autodetect()
+    # 初回は自動検出結果をそのまま初期値として保存
+    if all(not v for v in current.values()):
+        _write_paths(detected)
+        return ToolPathsOut(**_read_paths())
+    # 一部だけ空欄の場合も、検出できる値で自動補完する
+    merged = current.copy()
+    changed = False
+    for key in SETTINGS_KEYS:
+        if (not merged.get(key)) and detected.get(key):
+            merged[key] = detected[key]
+            changed = True
+    if changed:
+        _write_paths(merged)
+        return ToolPathsOut(**_read_paths())
+    return ToolPathsOut(**current)
 
 
 @router.put("/tool-paths", response_model=ToolPathsOut)

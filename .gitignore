@@ -14,3 +14,5 @@ _pdf_extracted.txt
 Lo Ra制作ワークベンチ 企画書.pdf
 projects/*
 !projects/.gitkeep
+external_tools/
+.runtime/

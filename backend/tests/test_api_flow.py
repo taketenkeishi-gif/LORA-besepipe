@@ -33,6 +33,7 @@ def test_collection_import_and_tags(client):
     )
     assert scan.status_code == 200
     assert scan.json()["detected"] == 12
+    assert scan.json()["items"][0]["thumbnail_url"].startswith("data:image/svg+xml;utf8,")
 
     selected_ids = [x["id"] for x in scan.json()["items"][:4]]
     imported = client.post(

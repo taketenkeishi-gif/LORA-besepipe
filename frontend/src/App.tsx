@@ -30,6 +30,7 @@ type ScanItem = {
   width: number;
   height: number;
   aspect: string;
+  thumbnail_url?: string;
 };
 
 type ToolPaths = {
@@ -397,14 +398,23 @@ export default function App() {
                       1) 候補画像を取得
                     </button>
                     <p className="muted">取得後、必要な画像だけ選択してください（青が選択中）。</p>
+                    <div className="row wrap">
+                      <button className="btn secondary" onClick={() => setSelectedScanIds(scanItems.map((x) => x.id))}>
+                        すべて選択
+                      </button>
+                      <button className="btn secondary" onClick={() => setSelectedScanIds([])}>
+                        すべて解除
+                      </button>
+                      <span className="muted">選択中: {selectedScanIds.length} 件</span>
+                    </div>
                     <div className="chips">
                       {scanItems.map((i) => (
-                        <button
-                          key={i.id}
-                          className={selectedScanIds.includes(i.id) ? "chip active" : "chip"}
-                          onClick={() => toggleScanSelection(i.id)}
-                        >
-                          {i.title}
+                        <button key={i.id} className={selectedScanIds.includes(i.id) ? "thumbCard active" : "thumbCard"} onClick={() => toggleScanSelection(i.id)}>
+                          {i.thumbnail_url ? <img src={i.thumbnail_url} alt={i.title} /> : <div className="thumbFallback">NO IMAGE</div>}
+                          <span className="thumbTitle">{i.title}</span>
+                          <span className="thumbMeta">
+                            {i.width}x{i.height} / {i.aspect}
+                          </span>
                         </button>
                       ))}
                     </div>
