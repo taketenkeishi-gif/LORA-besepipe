@@ -69,11 +69,18 @@ type PreviewPrompts = {
   negative_prompt: string;
 };
 
+type ApiCapabilities = {
+  dropFiles: boolean;
+  dropUrl: boolean;
+};
+
 export default function App() {
   const [tab, setTab] = useState<TabId>("dashboard");
   const [apiHealth, setApiHealth] = useState<string>("確認中");
   const [error, setError] = useState<string>("");
   const [notice, setNotice] = useState<string>("");
+  const [dragActive, setDragActive] = useState<boolean>(false);
+  const [apiCaps, setApiCaps] = useState<ApiCapabilities>({ dropFiles: true, dropUrl: true });
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [newProjectName, setNewProjectName] = useState<string>("");
@@ -169,7 +176,22 @@ export default function App() {
   }
 
   async function refreshAll() {
-    await Promise.all([refreshRuntime(), loadIntegrations(), loadPreviewPrompts()]);
+    await Promise.all([refreshRuntime(), loadIntegrations(), loadPreviewPrompts(), loadApiCapabilities()]);
+  }
+
+  async function loadApiCapabilities() {
+    try {
+      const res = await fetch(`${API_BASE}/openapi.json`);
+      if (!res.ok) return;
+      const doc = (await res.json()) as { paths?: Record<string, unknown> };
+      const paths = doc.paths ?? {};
+      setApiCaps({
+        dropFiles: Boolean(paths["/collector/drop-files"] || paths["/collector/drop_files"]),
+        dropUrl: Boolean(paths["/collector/drop-url"] || paths["/collector/drop_url"])
+      });
+    } catch {
+      // ignore
+    }
   }
 
   async function refreshRuntime() {
@@ -279,6 +301,7 @@ export default function App() {
   async function onDropFiles(ev: DragEvent<HTMLDivElement>) {
     if (!selectedProject) return;
     ev.preventDefault();
+    setDragActive(false);
     clearMessages();
     const files = Array.from(ev.dataTransfer.files).filter((f) => {
       if (f.type?.startsWith("image/")) return true;
@@ -288,14 +311,24 @@ export default function App() {
       const maybeUrl = extractDroppedUrl(ev);
       if (maybeUrl) {
         await dropUrlAsCandidate(selectedProject.id, maybeUrl.trim());
+      } else {
+        setNotice("画像ファイルまたは画像URLをドロップしてください。");
       }
+      return;
+    }
+    if (!apiCaps.dropFiles) {
+      setError("このバックエンドにはD&Dファイル追加APIがありません。`start_web.bat` で再起動して最新版を起動してください。");
       return;
     }
     try {
       const form = new FormData();
       form.append("project_id", String(selectedProject.id));
       for (const f of files) form.append("files", f);
-      const res = await fetch(`${API_BASE}/collector/drop-files`, { method: "POST", body: form });
+      let res = await fetch(`${API_BASE}/collector/drop-files`, { method: "POST", body: form });
+      if (res.status === 404) {
+        // 互換ルート
+        res = await fetch(`${API_BASE}/collector/drop_files`, { method: "POST", body: form });
+      }
       const json = await res.json();
       if (!res.ok) throw new Error(json?.detail ?? "drop failed");
       setScanItems(json.items || []);
@@ -321,8 +354,18 @@ export default function App() {
   }
 
   async function dropUrlAsCandidate(projectId: number, url: string) {
+    if (!apiCaps.dropUrl) {
+      setScanUrl(url);
+      setNotice("URLを収集欄に反映しました。`候補画像取得` を押してください。");
+      return;
+    }
     try {
-      const json = await apiPost<{ items: ScanItem[]; added_count: number }>("/collector/drop-url", { project_id: projectId, url });
+      let json: { items: ScanItem[]; added_count: number } | null = null;
+      try {
+        json = await apiPost<{ items: ScanItem[]; added_count: number }>("/collector/drop-url", { project_id: projectId, url });
+      } catch {
+        json = await apiPost<{ items: ScanItem[]; added_count: number }>("/collector/drop_url", { project_id: projectId, url });
+      }
       setScanItems(json.items || []);
       setNotice("URL画像を候補に追加しました。");
     } catch (e) {
@@ -568,10 +611,28 @@ export default function App() {
                   <label>minW<input type="number" value={minW} onChange={(e) => setMinW(Number(e.target.value || 0))} /></label>
                   <label>minH<input type="number" value={minH} onChange={(e) => setMinH(Number(e.target.value || 0))} /></label>
                 </div>
-                <button className="btn info" onClick={runScan}>1) 候補画像取得</button>
-                <div className="dropZone" onDrop={onDropFiles} onDragOver={(e) => e.preventDefault()}>
-                  ここに画像ファイルをドラッグ&ドロップ（Explorer / Web）。Webからは画像URLドロップも可能です。
+                <div className="ctaRow">
+                  <button className="btn cta info" onClick={runScan}>1) 候補画像取得</button>
+                  <button className="btn cta primary" onClick={runImport}>2) 取り込み</button>
+                  <button className="btn cta accent" onClick={runTags}>3) タグ生成</button>
+                  <button className="btn cta secondary" onClick={() => selectedProject && dropUrlAsCandidate(selectedProject.id, scanUrl)}>URLを候補追加</button>
                 </div>
+                <div
+                  className={dragActive ? "dropZone active" : "dropZone"}
+                  onDrop={onDropFiles}
+                  onDragEnter={(e) => {
+                    e.preventDefault();
+                    setDragActive(true);
+                  }}
+                  onDragLeave={() => setDragActive(false)}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragActive(true);
+                  }}
+                >
+                  ここに画像ファイルをドラッグ&ドロップ。Webは画像URLのドロップにも対応。
+                </div>
+                {!apiCaps.dropFiles && <p className="errorInline">D&D APIが未対応のバックエンドです。`start_web.bat` で再起動してください。</p>}
                 <div className="row wrap">
                   <button className="btn secondary" onClick={() => setSelectedScanIds(scanItems.map((x) => x.id))}>すべて選択</button>
                   <button className="btn secondary" onClick={() => setSelectedScanIds([])}>すべて解除</button>
@@ -592,8 +653,6 @@ export default function App() {
                 </div>
                 <div className="row">
                   <input value={namingTemplate} onChange={(e) => setNamingTemplate(e.target.value)} placeholder="{title}_{index}" />
-                  <button className="btn primary" onClick={runImport}>2) 取り込み</button>
-                  <button className="btn accent" onClick={runTags}>3) タグ生成</button>
                 </div>
                 <div className="row">
                   <label>繰り返し数<input type="number" value={repeatCount} onChange={(e) => setRepeatCount(Number(e.target.value || 1))} /></label>
@@ -657,10 +716,10 @@ export default function App() {
                     <button className="btn secondary" onClick={savePreviewPrompts}>プロンプト保存</button>
                   </div>
                   <div className="row wrap">
-                    <button className="btn primary" onClick={() => startTraining(selectedProject.id)}>学習開始</button>
-                    <button className="btn secondary" onClick={() => trainingAction("/training/stop-at-epoch", "epoch区切り停止予約")}>epoch区切り停止</button>
-                    <button className="btn warning" onClick={() => trainingAction("/training/stop-now", "すぐ停止")}>すぐ停止</button>
-                    <button className="btn info" onClick={() => trainingAction("/training/resume", "再開")}>再開</button>
+                    <button className="btn cta xl primary" onClick={() => startTraining(selectedProject.id)}>学習開始</button>
+                    <button className="btn cta secondary" onClick={() => trainingAction("/training/stop-at-epoch", "epoch区切り停止予約")}>epoch区切り停止</button>
+                    <button className="btn cta warning" onClick={() => trainingAction("/training/stop-now", "すぐ停止")}>すぐ停止</button>
+                    <button className="btn cta info" onClick={() => trainingAction("/training/resume", "再開")}>再開</button>
                   </div>
                 </div>
                 <div className="card">

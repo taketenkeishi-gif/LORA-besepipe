@@ -201,6 +201,20 @@ label {
   color: #19253a;
 }
 
+.btn.cta {
+  min-height: 48px;
+  font-size: 16px;
+  font-weight: 700;
+  border-radius: 12px;
+  padding: 0 16px;
+}
+
+.btn.xl {
+  min-height: 56px;
+  min-width: 180px;
+  font-size: 18px;
+}
+
 .statsGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(180px, 1fr));
@@ -261,6 +275,13 @@ label {
   padding: 12px;
   text-align: center;
   font-size: 13px;
+  transition: all 0.15s ease;
+}
+
+.dropZone.active {
+  border-color: #007a68;
+  background: #e8fbf6;
+  color: #0f4d44;
 }
 
 .chips {
@@ -401,6 +422,19 @@ label {
   color: #173056;
 }
 
+.ctaRow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.errorInline {
+  margin: 0;
+  color: #b22929;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .formGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -467,6 +501,9 @@ label {
   }
   .thumbGrid4 {
     grid-template-columns: repeat(2, minmax(100px, 1fr));
+  }
+  .ctaRow {
+    grid-template-columns: 1fr;
   }
   .row {
     flex-direction: column;

@@ -406,8 +406,7 @@ def import_selected(payload: CollectorImportIn) -> dict:
     }
 
 
-@router.post("/drop-files")
-async def drop_files(project_id: int = Form(...), files: list[UploadFile] = File(...)) -> dict:
+async def _drop_files_impl(project_id: int, files: list[UploadFile]) -> dict:
     project = _ensure_project(project_id)
     cache = SCAN_CACHE.get(project_id, [])
     next_id = (max((int(x["id"]) for x in cache), default=0) + 1) if cache else 1
@@ -437,8 +436,17 @@ async def drop_files(project_id: int = Form(...), files: list[UploadFile] = File
     }
 
 
-@router.post("/drop-url")
-def drop_url(payload: DropUrlIn) -> dict:
+@router.post("/drop-files")
+async def drop_files(project_id: int = Form(...), files: list[UploadFile] = File(...)) -> dict:
+    return await _drop_files_impl(project_id, files)
+
+
+@router.post("/drop_files")
+async def drop_files_legacy(project_id: int = Form(...), files: list[UploadFile] = File(...)) -> dict:
+    return await _drop_files_impl(project_id, files)
+
+
+def _drop_url_impl(payload: DropUrlIn) -> dict:
     project = _ensure_project(payload.project_id)
     cache = SCAN_CACHE.get(payload.project_id, [])
     next_id = (max((int(x["id"]) for x in cache), default=0) + 1) if cache else 1
@@ -495,6 +503,16 @@ def drop_url(payload: DropUrlIn) -> dict:
         "items": SCAN_CACHE[payload.project_id],
         "message": "dropped URL image added to candidates",
     }
+
+
+@router.post("/drop-url")
+def drop_url(payload: DropUrlIn) -> dict:
+    return _drop_url_impl(payload)
+
+
+@router.post("/drop_url")
+def drop_url_legacy(payload: DropUrlIn) -> dict:
+    return _drop_url_impl(payload)
 
 
 @router.post("/prepare-repeat-folder")
