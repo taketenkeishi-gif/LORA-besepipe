@@ -66,6 +66,8 @@ UIは以下メニューで利用できます。
 - Workflow
 - Integrations
 
+詳細な手順は [docs/使い方ガイド.md](docs/使い方ガイド.md) を参照してください。
+
 ## テスト
 
 ```bash

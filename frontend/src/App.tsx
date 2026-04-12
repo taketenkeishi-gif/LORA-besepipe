@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 const API_BASE = "http://127.0.0.1:8000";
 
-type TabId = "dashboard" | "projects" | "workflow" | "integrations";
+type TabId = "dashboard" | "projects" | "workflow" | "integrations" | "guide";
 
 type Project = {
   id: number;
@@ -55,8 +55,9 @@ type PreviewTimelineItem = {
 
 export default function App() {
   const [tab, setTab] = useState<TabId>("dashboard");
-  const [apiHealth, setApiHealth] = useState<string>("checking");
+  const [apiHealth, setApiHealth] = useState<string>("確認中");
   const [error, setError] = useState<string>("");
+  const [notice, setNotice] = useState<string>("");
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [newProjectName, setNewProjectName] = useState<string>("");
@@ -115,6 +116,11 @@ export default function App() {
     return json as T;
   }
 
+  function clearMessages() {
+    setError("");
+    setNotice("");
+  }
+
   async function refreshAll() {
     await Promise.all([refreshRuntime(), loadIntegrations()]);
   }
@@ -122,22 +128,17 @@ export default function App() {
   async function refreshRuntime() {
     try {
       const health = await apiGet<{ status: string }>("/health");
-      setApiHealth(health.status);
+      setApiHealth(health.status === "ok" ? "接続OK" : health.status);
       const list = await apiGet<Project[]>("/projects");
       setProjects(list);
-
-      const ids = list.map((x) => x.id);
-      const statsEntries = await Promise.all(
-        ids.map(async (id) => [id, await apiGet<TrainingStatus>(`/training/status?project_id=${id}`)] as const)
+      const entries = await Promise.all(
+        list.map(async (p) => [p.id, await apiGet<TrainingStatus>(`/training/status?project_id=${p.id}`)] as const)
       );
-      setStatuses(Object.fromEntries(statsEntries));
-
-      if (selectedProjectId === null && list.length > 0) {
-        setSelectedProjectId(list[0].id);
-      }
+      setStatuses(Object.fromEntries(entries));
+      if (selectedProjectId === null && list.length > 0) setSelectedProjectId(list[0].id);
     } catch (e) {
-      setApiHealth("offline");
-      setError(`API接続エラー: ${String(e)}`);
+      setApiHealth("オフライン");
+      setError(`APIへ接続できません。start_web.bat を再実行してください。詳細: ${String(e)}`);
     }
   }
 
@@ -163,35 +164,38 @@ export default function App() {
 
   async function createProject() {
     if (!newProjectName.trim()) return;
-    setError("");
+    clearMessages();
     try {
       const created = await apiPost<Project>("/projects", { name: newProjectName.trim() });
       setNewProjectName("");
       setSelectedProjectId(created.id);
+      setNotice(`プロジェクト「${created.name}」を作成しました。`);
       await refreshRuntime();
     } catch (e) {
-      setError(String(e));
+      setError(`プロジェクト作成に失敗しました: ${String(e)}`);
     }
   }
 
   async function startTraining(projectId: number) {
-    setError("");
+    clearMessages();
     try {
       await apiPost("/training/start", {
         project_id: projectId,
         total_epochs: epochs,
         steps_per_epoch: stepsPerEpoch
       });
+      setNotice("学習を開始しました。進捗は2秒ごとに自動更新されます。");
       await refreshRuntime();
     } catch (e) {
-      setError(String(e));
+      setError(`学習開始に失敗しました: ${String(e)}`);
     }
   }
 
-  async function trainingAction(path: string, projectId: number) {
-    setError("");
+  async function trainingAction(path: string, projectId: number, okMessage: string) {
+    clearMessages();
     try {
       await apiPost(path, { project_id: projectId });
+      setNotice(okMessage);
       await refreshRuntime();
     } catch (e) {
       setError(String(e));
@@ -200,7 +204,7 @@ export default function App() {
 
   async function runScan() {
     if (!selectedProject) return;
-    setError("");
+    clearMessages();
     try {
       const result = await apiPost<{ items: ScanItem[] }>("/collector/scan", {
         project_id: selectedProject.id,
@@ -208,34 +212,37 @@ export default function App() {
       });
       setScanItems(result.items);
       setSelectedScanIds(result.items.slice(0, 6).map((x) => x.id));
+      setNotice(`候補画像を ${result.items.length} 件取得しました。必要な画像だけ選択してください。`);
     } catch (e) {
-      setError(String(e));
+      setError(`画像候補の取得に失敗しました: ${String(e)}`);
     }
   }
 
   async function runImport() {
     if (!selectedProject) return;
-    setError("");
+    clearMessages();
     try {
       await apiPost("/collector/import", {
         project_id: selectedProject.id,
         selected_ids: selectedScanIds,
         naming_template: namingTemplate
       });
+      setNotice("選択画像をデータセットへ取り込みました。次はタグ生成を実行してください。");
       await refreshRuntime();
     } catch (e) {
-      setError(String(e));
+      setError(`取り込みに失敗しました: ${String(e)}`);
     }
   }
 
   async function runTags() {
     if (!selectedProject) return;
-    setError("");
+    clearMessages();
     try {
-      await apiPost("/tags/generate", { project_id: selectedProject.id });
+      const res = await apiPost<{ generated_count: number }>("/tags/generate", { project_id: selectedProject.id });
+      setNotice(`タグファイルを ${res.generated_count} 件生成しました。`);
       await refreshRuntime();
     } catch (e) {
-      setError(String(e));
+      setError(`タグ生成に失敗しました: ${String(e)}`);
     }
   }
 
@@ -244,80 +251,93 @@ export default function App() {
   }
 
   async function saveToolPaths() {
-    setError("");
+    clearMessages();
     try {
-      const saved = await apiPost<ToolPaths>("/settings/tool-paths", toolPaths, "PUT");
-      setToolPaths(saved);
+      await apiPost<ToolPaths>("/settings/tool-paths", toolPaths, "PUT");
+      setNotice("連携パスを保存しました。続けて「状態確認」で接続可否を確認してください。");
       await loadIntegrations();
     } catch (e) {
-      setError(String(e));
+      setError(`パス保存に失敗しました: ${String(e)}`);
     }
   }
 
   async function autoDetectToolPaths() {
-    setError("");
+    clearMessages();
     try {
       const detected = await apiPost<ToolPaths>("/settings/tool-paths/autodetect", {});
       setToolPaths(detected);
+      setNotice("自動検出を実行しました。必要に応じて手入力で修正してください。");
       await loadIntegrations();
     } catch (e) {
-      setError(String(e));
+      setError(`自動検出に失敗しました: ${String(e)}`);
     }
+  }
+
+  function integrationRow(label: string, keyName: keyof ToolPaths) {
+    const check = integrationStatus?.checks?.[keyName];
+    const ok = !!check?.ok;
+    return (
+      <li key={keyName} className="statusRow">
+        <span>{label}</span>
+        <span className={ok ? "statusOk" : "statusNg"}>{ok ? "OK" : "NG"}</span>
+        <span className="muted">{check?.reason ?? "未確認"}</span>
+      </li>
+    );
   }
 
   return (
     <div className="layout">
       <aside className="sidebar">
-        <h1 className="logo">LoRA Workbench</h1>
+        <h1 className="logo">LoRA制作ワークベンチ</h1>
         <nav className="menu">
           <button className={tab === "dashboard" ? "menuBtn active" : "menuBtn"} onClick={() => setTab("dashboard")}>
-            Dashboard
+            ダッシュボード
           </button>
           <button className={tab === "projects" ? "menuBtn active" : "menuBtn"} onClick={() => setTab("projects")}>
-            Projects
+            プロジェクト管理
           </button>
           <button className={tab === "workflow" ? "menuBtn active" : "menuBtn"} onClick={() => setTab("workflow")}>
-            Workflow
+            制作ワークフロー
           </button>
           <button
             className={tab === "integrations" ? "menuBtn active" : "menuBtn"}
             onClick={() => setTab("integrations")}
           >
-            Integrations
+            外部連携設定
+          </button>
+          <button className={tab === "guide" ? "menuBtn active" : "menuBtn"} onClick={() => setTab("guide")}>
+            使い方ガイド
           </button>
         </nav>
         <div className="healthCard">
-          <div>API: {apiHealth}</div>
+          <div>API状態: {apiHealth}</div>
           <button className="btn secondary small" onClick={() => void refreshAll()}>
-            Refresh
+            最新状態に更新
           </button>
         </div>
       </aside>
 
       <main className="content">
         {error && <div className="errorBanner">{error}</div>}
+        {notice && <div className="noticeBanner">{notice}</div>}
 
         {tab === "dashboard" && (
           <section className="panel">
-            <h2>Dashboard</h2>
+            <h2>ダッシュボード</h2>
+            <p className="guideLine">まずは「外部連携設定」でパス確認後、「プロジェクト管理」へ進んでください。</p>
             <div className="statsGrid">
               <div className="statBox">
-                <div className="statLabel">Projects</div>
+                <div className="statLabel">登録プロジェクト数</div>
                 <div className="statValue">{projects.length}</div>
               </div>
               <div className="statBox">
-                <div className="statLabel">Training Active</div>
-                <div className="statValue">
-                  {Object.values(statuses).filter((s) => s.status === "training").length}
-                </div>
+                <div className="statLabel">学習中ジョブ数</div>
+                <div className="statValue">{Object.values(statuses).filter((s) => s.status === "training").length}</div>
               </div>
               <div className="statBox">
-                <div className="statLabel">Integrations Ready</div>
+                <div className="statLabel">連携チェックOK</div>
                 <div className="statValue">
-                  {integrationStatus
-                    ? Object.values(integrationStatus.checks).filter((x) => x.ok).length
-                    : 0}
-                  /4
+                  {integrationStatus ? Object.values(integrationStatus.checks).filter((x) => x.ok).length : 0}/4
                 </div>
               </div>
             </div>
@@ -326,19 +346,21 @@ export default function App() {
 
         {tab === "projects" && (
           <section className="panel">
-            <h2>Projects</h2>
+            <h2>プロジェクト管理</h2>
+            <p className="guideLine">手順1: 新しいプロジェクト名を入力して作成し、下の一覧で対象を選択します。</p>
             <div className="row">
               <input
                 value={newProjectName}
                 onChange={(e) => setNewProjectName(e.target.value)}
-                placeholder="New project name"
+                placeholder="例: キャラ名_衣装A_v1"
               />
               <button className="btn primary" onClick={createProject}>
-                Create
+                プロジェクト作成
               </button>
             </div>
 
             <div className="projectTable">
+              {projects.length === 0 && <p className="muted">まだプロジェクトがありません。</p>}
               {projects.map((p) => (
                 <button
                   key={p.id}
@@ -355,19 +377,26 @@ export default function App() {
 
         {tab === "workflow" && (
           <section className="panel">
-            <h2>Workflow</h2>
+            <h2>制作ワークフロー</h2>
             {!selectedProject ? (
-              <p className="muted">Projectを選択してください。</p>
+              <p className="muted">先に「プロジェクト管理」から対象プロジェクトを選択してください。</p>
             ) : (
               <>
-                <p className="muted">Current: {selectedProject.name}</p>
+                <p className="guideLine">
+                  手順2: 画像収集→取り込み→タグ生成→学習開始の順に進めると迷いません。現在の対象:{" "}
+                  <strong>{selectedProject.name}</strong>
+                </p>
                 <div className="workflowGrid">
                   <div className="card">
-                    <h3>Dataset Collection</h3>
-                    <input value={scanUrl} onChange={(e) => setScanUrl(e.target.value)} placeholder="source URL" />
+                    <h3>データセット作成</h3>
+                    <label>
+                      収集元URL
+                      <input value={scanUrl} onChange={(e) => setScanUrl(e.target.value)} placeholder="https://..." />
+                    </label>
                     <button className="btn info" onClick={runScan}>
-                      Scan
+                      1) 候補画像を取得
                     </button>
+                    <p className="muted">取得後、必要な画像だけ選択してください（青が選択中）。</p>
                     <div className="chips">
                       {scanItems.map((i) => (
                         <button
@@ -386,62 +415,73 @@ export default function App() {
                         placeholder="{title}_{index}"
                       />
                       <button className="btn primary" onClick={runImport}>
-                        Import
+                        2) 選択画像を取り込み
                       </button>
                     </div>
                     <button className="btn accent" onClick={runTags}>
-                      Generate Tags
+                      3) タグを生成
                     </button>
                   </div>
 
                   <div className="card">
-                    <h3>Training Control</h3>
+                    <h3>学習制御</h3>
+                    <p className="muted">手順3: 設定して学習開始。停止は「即時」か「epoch区切り」を選べます。</p>
                     <div className="row">
-                      <input
-                        type="number"
-                        value={epochs}
-                        onChange={(e) => setEpochs(Number(e.target.value || 1))}
-                        placeholder="epochs"
-                      />
-                      <input
-                        type="number"
-                        value={stepsPerEpoch}
-                        onChange={(e) => setStepsPerEpoch(Number(e.target.value || 1))}
-                        placeholder="steps/epoch"
-                      />
+                      <label>
+                        epoch数
+                        <input type="number" value={epochs} onChange={(e) => setEpochs(Number(e.target.value || 1))} />
+                      </label>
+                      <label>
+                        1epochあたりstep
+                        <input
+                          type="number"
+                          value={stepsPerEpoch}
+                          onChange={(e) => setStepsPerEpoch(Number(e.target.value || 1))}
+                        />
+                      </label>
                     </div>
                     <div className="row wrap">
                       <button className="btn primary" onClick={() => startTraining(selectedProject.id)}>
-                        Start
+                        学習開始
                       </button>
-                      <button className="btn secondary" onClick={() => trainingAction("/training/stop-at-epoch", selectedProject.id)}>
-                        Stop@Epoch
+                      <button
+                        className="btn secondary"
+                        onClick={() => trainingAction("/training/stop-at-epoch", selectedProject.id, "現在epoch終了後に停止します。")}
+                      >
+                        epoch区切りで停止
                       </button>
-                      <button className="btn warning" onClick={() => trainingAction("/training/stop-now", selectedProject.id)}>
-                        StopNow
+                      <button
+                        className="btn warning"
+                        onClick={() => trainingAction("/training/stop-now", selectedProject.id, "学習を停止しました。")}
+                      >
+                        すぐ停止
                       </button>
-                      <button className="btn info" onClick={() => trainingAction("/training/resume", selectedProject.id)}>
-                        Resume
+                      <button
+                        className="btn info"
+                        onClick={() => trainingAction("/training/resume", selectedProject.id, "学習を再開しました。")}
+                      >
+                        再開
                       </button>
                     </div>
                     <p className="muted">
-                      status: {statuses[selectedProject.id]?.status ?? "idle"} / progress:{" "}
-                      {statuses[selectedProject.id]?.epoch ?? 0}/{statuses[selectedProject.id]?.total_epochs ?? 0}
+                      状態: {statuses[selectedProject.id]?.status ?? "idle"} / 進捗:{" "}
+                      {statuses[selectedProject.id]?.epoch ?? 0}/{statuses[selectedProject.id]?.total_epochs ?? 0} epoch
                     </p>
                   </div>
                 </div>
 
                 <div className="card">
-                  <h3>Preview Timeline</h3>
+                  <h3>プレビュー履歴</h3>
+                  <p className="muted">手順4: epochごとの差分確認に使います。気になるepochをメモしてください。</p>
                   {timeline.length === 0 ? (
-                    <p className="muted">まだpreviewはありません。</p>
+                    <p className="muted">まだプレビューはありません（学習が1epoch進むと表示されます）。</p>
                   ) : (
                     <div className="timeline">
                       {timeline.map((t) => (
                         <div key={t.checkpoint_id} className="timelineItem">
                           <strong>Epoch {t.epoch}</strong>
-                          <span className="muted">mark: {t.mark}</span>
-                          <span className="muted">samples: {Object.keys(t.samples).join(", ")}</span>
+                          <span className="muted">マーク: {t.mark}</span>
+                          <span className="muted">サンプル: {Object.keys(t.samples).join(", ")}</span>
                         </div>
                       ))}
                     </div>
@@ -454,12 +494,12 @@ export default function App() {
 
         {tab === "integrations" && (
           <section className="panel">
-            <h2>Integrations</h2>
-            <p className="muted">外部ツールのパスを設定して保存し、接続状態を確認します。</p>
+            <h2>外部連携設定</h2>
+            <p className="guideLine">手順0: 最初にここを設定。自動検出 → 保存 → 状態確認 の順で実施してください。</p>
             <div className="card">
               <div className="formGrid">
                 <label>
-                  Python Executable
+                  Python実行ファイル
                   <input
                     value={toolPaths.python_exe}
                     onChange={(e) => setToolPaths({ ...toolPaths, python_exe: e.target.value })}
@@ -467,7 +507,7 @@ export default function App() {
                   />
                 </label>
                 <label>
-                  kohya Root
+                  kohyaディレクトリ
                   <input
                     value={toolPaths.kohya_root}
                     onChange={(e) => setToolPaths({ ...toolPaths, kohya_root: e.target.value })}
@@ -475,7 +515,7 @@ export default function App() {
                   />
                 </label>
                 <label>
-                  ComfyUI Root
+                  ComfyUIディレクトリ
                   <input
                     value={toolPaths.comfyui_root}
                     onChange={(e) => setToolPaths({ ...toolPaths, comfyui_root: e.target.value })}
@@ -483,7 +523,7 @@ export default function App() {
                   />
                 </label>
                 <label>
-                  WD14 Script Path
+                  WD14スクリプト
                   <input
                     value={toolPaths.wd14_script}
                     onChange={(e) => setToolPaths({ ...toolPaths, wd14_script: e.target.value })}
@@ -492,31 +532,44 @@ export default function App() {
                 </label>
               </div>
               <div className="row wrap">
-                <button className="btn primary" onClick={saveToolPaths}>
-                  Save Paths
-                </button>
                 <button className="btn info" onClick={autoDetectToolPaths}>
-                  Auto Detect
+                  自動検出
+                </button>
+                <button className="btn primary" onClick={saveToolPaths}>
+                  パスを保存
                 </button>
                 <button className="btn secondary" onClick={() => void loadIntegrations()}>
-                  Check Status
+                  状態確認
                 </button>
               </div>
             </div>
             <div className="card">
-              <h3>Connection Status</h3>
+              <h3>接続ステータス</h3>
               {!integrationStatus ? (
-                <p className="muted">status not loaded</p>
+                <p className="muted">まだ確認できていません。</p>
               ) : (
                 <ul className="statusList">
-                  {Object.entries(integrationStatus.checks).map(([key, v]) => (
-                    <li key={key}>
-                      <strong>{key}</strong>: {v.ok ? "OK" : "NG"} ({v.reason})
-                    </li>
-                  ))}
+                  {integrationRow("Python", "python_exe")}
+                  {integrationRow("kohya", "kohya_root")}
+                  {integrationRow("ComfyUI", "comfyui_root")}
+                  {integrationRow("WD14", "wd14_script")}
                 </ul>
               )}
             </div>
+          </section>
+        )}
+
+        {tab === "guide" && (
+          <section className="panel">
+            <h2>使い方ガイド（画面内版）</h2>
+            <ol className="guideList">
+              <li>まず `外部連携設定` で自動検出し、保存後に状態確認します。</li>
+              <li>`プロジェクト管理` で新規プロジェクトを作成し、対象を選択します。</li>
+              <li>`制作ワークフロー` で候補取得→取り込み→タグ生成を順に実行します。</li>
+              <li>学習設定を入力して `学習開始`。必要に応じて停止/再開します。</li>
+              <li>プレビュー履歴でepoch差分を確認し、良いcheckpointを判断します。</li>
+            </ol>
+            <p className="muted">詳細版はリポジトリの「使い方ガイド」ファイルを参照してください。</p>
           </section>
         )}
       </main>
