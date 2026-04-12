@@ -40,6 +40,9 @@ npm run dev
 
 - `start_web.bat`: ブラウザ版を起動（backend + frontend）
 - `start_desktop.bat`: デスクトップ版を起動（backend + frontend + Electron）
+- `stop_all.bat`: backend / frontend / desktop 関連プロセスを停止
+
+不安定な時は `stop_all.bat` 実行後に `start_web.bat` または `start_desktop.bat` を実行してください。
 
 ## 現在動く範囲
 
