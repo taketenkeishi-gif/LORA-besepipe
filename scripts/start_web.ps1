@@ -42,11 +42,17 @@ function Ensure-BackendDeps($rootPath) {
     & python -m venv (Join-Path $backend ".venv")
   }
   if (-not (Test-Path $venvPy)) { throw "backend venv python not found" }
-  $depsMarker = Join-Path $backend ".venv\deps.ok"
-  if (-not (Test-Path $depsMarker)) {
+  $reqPath = Join-Path $backend "requirements.txt"
+  $depsMarker = Join-Path $backend ".venv\deps.hash"
+  $currentHash = (Get-FileHash -Algorithm SHA256 -Path $reqPath).Hash
+  $installedHash = ""
+  if (Test-Path $depsMarker) {
+    $installedHash = (Get-Content $depsMarker -ErrorAction SilentlyContinue | Select-Object -First 1).Trim()
+  }
+  if (($installedHash -ne $currentHash) -or (-not (Test-Path $depsMarker))) {
     Write-Host "[setup] install backend dependencies"
-    & $venvPy -m pip install -r (Join-Path $backend "requirements.txt")
-    New-Item -ItemType File -Path $depsMarker -Force | Out-Null
+    & $venvPy -m pip install -r $reqPath
+    Set-Content -Path $depsMarker -Value $currentHash -Encoding ascii
   }
 }
 
