@@ -572,10 +572,23 @@ def import_selected(payload: CollectorImportIn) -> dict:
     if not candidates:
         raise HTTPException(status_code=400, detail="scan first: candidates not found")
 
-    dataset_dir = Path(project["dataset_dir"])
-    dataset_dir.mkdir(parents=True, exist_ok=True)
     library_dir = Path(project["library_dir"])
     library_dir.mkdir(parents=True, exist_ok=True)
+    dataset_dir = Path(project["dataset_dir"])
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+
+    target_dir = dataset_dir
+    requested_dir = payload.import_dir.strip()
+    if requested_dir:
+        req = Path(requested_dir)
+        try:
+            req_resolved = req.resolve()
+            library_resolved = library_dir.resolve()
+            if req_resolved == library_resolved or library_resolved in req_resolved.parents:
+                target_dir = req_resolved
+        except OSError:
+            pass
+    target_dir.mkdir(parents=True, exist_ok=True)
 
     conn = get_conn()
     cur = conn.cursor()
@@ -587,7 +600,7 @@ def import_selected(payload: CollectorImportIn) -> dict:
         filename = (
             payload.naming_template.replace("{title}", _slugify(item["title"])).replace("{index}", f"{order:04d}")
         )
-        out_path = dataset_dir / f"{filename}.png"
+        out_path = target_dir / f"{filename}.png"
 
         src_file = item.get("source_file")
         if src_file and Path(src_file).exists():
@@ -619,6 +632,7 @@ def import_selected(payload: CollectorImportIn) -> dict:
     conn.close()
     return {
         "project_id": payload.project_id,
+        "import_dir": str(target_dir),
         "imported_count": len(imported),
         "files": imported,
         "naming_template": payload.naming_template,

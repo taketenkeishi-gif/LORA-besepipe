@@ -39,6 +39,7 @@ class CollectorImportIn(BaseModel):
     project_id: int
     selected_ids: list[int]
     naming_template: str = "{title}_{index}"
+    import_dir: str = ""
 
 
 class RepeatFolderIn(BaseModel):

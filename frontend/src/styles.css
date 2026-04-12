@@ -153,6 +153,15 @@ h3 {
   flex-wrap: wrap;
 }
 
+.row.wrap > label {
+  flex: 1 1 320px;
+  min-width: 220px;
+}
+
+.row.wrap > input {
+  flex: 1 1 460px;
+}
+
 input {
   width: 100%;
   height: 38px;
