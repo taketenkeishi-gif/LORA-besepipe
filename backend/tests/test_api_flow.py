@@ -91,3 +91,28 @@ def test_training_progress_and_previews(client):
     for item in timeline:
         all_slots.update(item["samples"].keys())
     assert {"face", "bust", "full", "bg"}.issubset(all_slots)
+
+
+def test_settings_paths_and_status(client):
+    current = client.get("/settings/tool-paths")
+    assert current.status_code == 200
+    assert set(current.json().keys()) == {"python_exe", "kohya_root", "comfyui_root", "wd14_script"}
+
+    updated = client.put(
+        "/settings/tool-paths",
+        json={
+            "python_exe": "",
+            "kohya_root": "C:/dummy/kohya",
+            "comfyui_root": "C:/dummy/comfyui",
+            "wd14_script": "C:/dummy/wd14.py",
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["kohya_root"] == "C:/dummy/kohya"
+
+    status = client.get("/settings/integrations/status")
+    assert status.status_code == 200
+    payload = status.json()
+    assert "paths" in payload
+    assert "checks" in payload
+    assert set(payload["checks"].keys()) == {"python_exe", "kohya_root", "comfyui_root", "wd14_script"}

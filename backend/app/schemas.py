@@ -41,3 +41,17 @@ class TrainingControlIn(BaseModel):
 
 class GenerateTagsIn(BaseModel):
     project_id: int
+
+
+class ToolPathsIn(BaseModel):
+    python_exe: str = ""
+    kohya_root: str = ""
+    comfyui_root: str = ""
+    wd14_script: str = ""
+
+
+class ToolPathsOut(BaseModel):
+    python_exe: str
+    kohya_root: str
+    comfyui_root: str
+    wd14_script: str

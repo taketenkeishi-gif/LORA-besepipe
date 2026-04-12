@@ -49,12 +49,22 @@ npm run dev
 - プロジェクト作成/一覧
 - mock画像収集（scan）とdataset取り込み（import）
 - placeholderタグ生成（captions配下にtxt）
+- 外部連携設定
+  - Python / kohya / ComfyUI / WD14 のパス保存
+  - 自動検出（autodetect）
+  - 接続状態チェック（path存在 + pythonバージョン確認）
 - 疑似学習ジョブ
   - `start` でepoch/step進行
   - `stop-now` で即停止
   - `stop-at-epoch` でepoch終端停止予約
   - `resume` で再開
   - epoch終端で checkpoint と preview プレースホルダ生成
+
+UIは以下メニューで利用できます。
+- Dashboard
+- Projects
+- Workflow
+- Integrations
 
 ## テスト
 
