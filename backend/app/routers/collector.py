@@ -379,8 +379,37 @@ def _filter_items(items: list[dict], keyword: str, project_type: str) -> list[di
 def scan(payload: CollectorScanIn) -> dict:
     project = _ensure_project(payload.project_id)
     keyword = payload.keyword.strip()
+    url = payload.url.strip()
+    has_url = bool(url and urlparse(url).scheme in {"http", "https"})
 
-    # 1) dataset_base を優先スキャン
+    # 1) URLがあるときはURL由来を最優先
+    if has_url:
+        live_items = _scan_from_url_live(project, payload.project_id, url, limit=payload.limit)
+        if live_items:
+            live_items = _filter_items(live_items, keyword=keyword, project_type=str(project["project_type"]))
+            live_items = live_items[: payload.limit]
+        if live_items:
+            SCAN_CACHE[payload.project_id] = live_items
+            return {
+                "project_id": payload.project_id,
+                "url": url,
+                "mode": "url_live",
+                "detected": len(live_items),
+                "items": live_items,
+                "message": "live URL scan completed",
+            }
+        # URL指定時に無関係なdataset_base結果を混ぜない
+        SCAN_CACHE[payload.project_id] = []
+        return {
+            "project_id": payload.project_id,
+            "url": url,
+            "mode": "url_unavailable",
+            "detected": 0,
+            "items": [],
+            "message": "URLから画像を取得できませんでした。画像URLを直接指定するか、D&Dで追加してください。",
+        }
+
+    # 2) URL未指定時はdataset_baseを探索
     dataset_items = _scan_from_dataset_base(project, keyword=keyword, limit=payload.limit * 3)
     if dataset_items:
         dataset_items = _filter_items(dataset_items, keyword=keyword, project_type=str(project["project_type"]))
@@ -389,30 +418,14 @@ def scan(payload: CollectorScanIn) -> dict:
         SCAN_CACHE[payload.project_id] = dataset_items
         return {
             "project_id": payload.project_id,
-            "url": payload.url,
+            "url": "",
             "mode": "dataset_base",
             "detected": len(dataset_items),
             "items": dataset_items,
             "message": f"dataset_base({project['project_type']}) から候補を取得",
         }
 
-    # 2) URLから実画像を収集
-    live_items = _scan_from_url_live(project, payload.project_id, payload.url, limit=payload.limit)
-    if live_items:
-        live_items = _filter_items(live_items, keyword=keyword, project_type=str(project["project_type"]))
-        live_items = live_items[: payload.limit]
-    if live_items:
-        SCAN_CACHE[payload.project_id] = live_items
-        return {
-            "project_id": payload.project_id,
-            "url": payload.url,
-            "mode": "url_live",
-            "detected": len(live_items),
-            "items": live_items,
-            "message": "live URL scan completed",
-        }
-
-    # 3) fallback: URL由来のモック候補
+    # 3) fallback: URL未指定時のみモック候補
     parsed = urlparse(payload.url)
     seed = _slugify(Path(parsed.path).stem or parsed.netloc or "image")
     items = []

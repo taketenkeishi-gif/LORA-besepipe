@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import time
 from pathlib import Path
 
@@ -34,11 +35,25 @@ def test_collection_import_and_tags(client):
         json={"project_id": project_id, "url": "https://example.com/user/mock", "keyword": "mock", "limit": 12},
     )
     assert scan.status_code == 200
-    assert scan.json()["detected"] == 12
-    thumb = scan.json()["items"][0]["thumbnail_url"]
+    scan_json = scan.json()
+    items = scan_json["items"]
+    # URL取得不可時は無関係候補を返さない仕様のため、0件ならD&Dで候補を作る
+    if scan_json["detected"] == 0:
+        png_1x1 = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7ZbHkAAAAASUVORK5CYII="
+        )
+        dropped = client.post(
+            "/collector/drop-files",
+            data={"project_id": str(project_id)},
+            files={"files": ("sample.png", png_1x1, "image/png")},
+        )
+        assert dropped.status_code == 200
+        items = dropped.json()["items"]
+    assert len(items) >= 1
+    thumb = items[0]["thumbnail_url"]
     assert thumb.startswith("data:image/svg+xml;utf8,") or thumb.startswith("data:image/jpeg;base64,")
 
-    selected_ids = [x["id"] for x in scan.json()["items"][:4]]
+    selected_ids = [x["id"] for x in items[:4]]
     imported = client.post(
         "/collector/import",
         json={
@@ -48,7 +63,7 @@ def test_collection_import_and_tags(client):
         },
     )
     assert imported.status_code == 200
-    assert imported.json()["imported_count"] == 4
+    assert imported.json()["imported_count"] == len(selected_ids)
 
     for p in imported.json()["files"]:
         assert Path(p).exists()
@@ -56,7 +71,7 @@ def test_collection_import_and_tags(client):
 
     generated = client.post("/tags/generate", json={"project_id": project_id})
     assert generated.status_code == 200
-    assert generated.json()["generated_count"] == 4
+    assert generated.json()["generated_count"] == len(selected_ids)
     for p in generated.json()["files"]:
         assert Path(p).exists()
         assert str(captions_dir) in p

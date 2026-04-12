@@ -96,6 +96,7 @@ export default function App() {
   const [tagFilter, setTagFilter] = useState<string>("");
   const [scanItems, setScanItems] = useState<ScanItem[]>([]);
   const [selectedScanIds, setSelectedScanIds] = useState<number[]>([]);
+  const [expandedTagCardId, setExpandedTagCardId] = useState<number | null>(null);
   const [namingTemplate, setNamingTemplate] = useState<string>("{title}_{index}");
 
   const [repeatFolderTitle, setRepeatFolderTitle] = useState<string>("subject");
@@ -291,6 +292,7 @@ export default function App() {
         limit: 60
       });
       setScanItems(result.items);
+      setExpandedTagCardId(null);
       setSelectedScanIds(result.items.slice(0, 12).map((x) => x.id));
       setNotice(`候補画像 ${result.detected} 件を取得 (${result.mode})`);
     } catch (e) {
@@ -332,6 +334,7 @@ export default function App() {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.detail ?? "drop failed");
       setScanItems(json.items || []);
+      setExpandedTagCardId(null);
       setNotice(`${json.added_count ?? files.length} 件を候補に追加しました。`);
     } catch (e) {
       setError(`ドラッグ&ドロップ追加失敗: ${String(e)}`);
@@ -367,6 +370,7 @@ export default function App() {
         json = await apiPost<{ items: ScanItem[]; added_count: number }>("/collector/drop_url", { project_id: projectId, url });
       }
       setScanItems(json.items || []);
+      setExpandedTagCardId(null);
       setNotice("URL画像を候補に追加しました。");
     } catch (e) {
       // ページURLなどで直接追加できない場合はscanにフォールバック
@@ -379,6 +383,7 @@ export default function App() {
           limit: 60
         });
         setScanItems(result.items);
+        setExpandedTagCardId(null);
         setSelectedScanIds(result.items.slice(0, 12).map((x) => x.id));
         setNotice(`URLドロップを収集にフォールバック: ${result.detected} 件 (${result.mode})`);
       } catch (inner) {
@@ -640,14 +645,28 @@ export default function App() {
                 </div>
                 <div className="chips">
                   {scanItems.map((i) => (
-                    <button key={i.id} className={selectedScanIds.includes(i.id) ? "thumbCard active" : "thumbCard"} onClick={() => toggleScanSelection(i.id)}>
-                      {i.thumbnail_url ? <img src={i.thumbnail_url} alt={i.title} onError={(e) => {
-                        e.currentTarget.onerror = null;
-                        e.currentTarget.src = "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='200'%3E%3Crect width='100%25' height='100%25' fill='%23dbe6f4'/%3E%3Ctext x='16' y='104' fill='%234c5f7a' font-size='14'%3Epreview unavailable%3C/text%3E%3C/svg%3E";
-                      }} /> : <div className="thumbFallback">NO IMAGE</div>}
+                    <button
+                      key={i.id}
+                      className={selectedScanIds.includes(i.id) ? "thumbCard active" : "thumbCard"}
+                      onClick={() => toggleScanSelection(i.id)}
+                      onDoubleClick={() => setExpandedTagCardId((prev) => (prev === i.id ? null : i.id))}
+                    >
+                      <div className="thumbViewport">
+                        {i.thumbnail_url ? <img src={i.thumbnail_url} alt={i.title} onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='200'%3E%3Crect width='100%25' height='100%25' fill='%23dbe6f4'/%3E%3Ctext x='16' y='104' fill='%234c5f7a' font-size='14'%3Epreview unavailable%3C/text%3E%3C/svg%3E";
+                        }} /> : <div className="thumbFallback">NO IMAGE</div>}
+                      </div>
                       <span className="thumbTitle">{i.title}</span>
                       <span className="thumbMeta">{i.width}x{i.height} / {i.aspect}</span>
-                      <span className="thumbMeta">{(i.tags || []).join(", ")}</span>
+                      <span className="thumbMeta">ダブルクリックでタグ表示</span>
+                      {expandedTagCardId === i.id && (
+                        <div className="tagFlow">
+                          {(i.tags || []).map((t) => (
+                            <span key={`${i.id}-${t}`} className="tagChip">{t}</span>
+                          ))}
+                        </div>
+                      )}
                     </button>
                   ))}
                 </div>

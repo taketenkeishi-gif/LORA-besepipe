@@ -300,15 +300,24 @@ label {
   display: grid;
   gap: 4px;
   text-align: left;
+  overflow: hidden;
+  align-content: start;
+}
+
+.thumbViewport {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 8px;
+  border: 1px solid #ccd8e6;
+  background: #f3f7fb;
+  overflow: hidden;
 }
 
 .thumbCard img {
   width: 100%;
-  height: 120px;
-  border-radius: 8px;
+  height: 100%;
+  display: block;
   object-fit: cover;
-  border: 1px solid #ccd8e6;
-  background: #f3f7fb;
 }
 
 .thumbCard.active {
@@ -318,28 +327,49 @@ label {
 }
 
 .thumbCard.active img {
-  border-color: #fff;
+  filter: saturate(1.08);
 }
 
 .thumbTitle {
   font-size: 13px;
   font-weight: 700;
+  word-break: break-word;
 }
 
 .thumbMeta {
   font-size: 12px;
   opacity: 0.9;
+  word-break: break-word;
 }
 
 .thumbFallback {
   width: 100%;
-  height: 120px;
-  border-radius: 8px;
+  height: 100%;
   background: #dbe6f4;
   display: grid;
   place-items: center;
   font-size: 12px;
   color: #4c5f7a;
+}
+
+.tagFlow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.tagChip {
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.thumbCard:not(.active) .tagChip {
+  background: #edf4ff;
+  border-color: #ccdcf4;
 }
 
 .thumbGrid4 {
