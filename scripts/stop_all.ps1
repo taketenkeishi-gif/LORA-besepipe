@@ -7,7 +7,10 @@ $runtimeDir = Join-Path $root ".runtime"
 
 function Kill-Tree($targetProcId) {
   if ($targetProcId -and $targetProcId -match "^\d+$") {
-    cmd /c "taskkill /PID $targetProcId /T /F" | Out-Null
+    $exists = Get-Process -Id ([int]$targetProcId) -ErrorAction SilentlyContinue
+    if ($exists) {
+      cmd /c "taskkill /PID $targetProcId /T /F" 1>$null 2>$null
+    }
   }
 }
 
