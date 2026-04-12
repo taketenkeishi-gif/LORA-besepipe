@@ -1,5 +1,7 @@
 const { app, BrowserWindow } = require("electron");
+const fs = require("fs");
 const http = require("http");
+const path = require("path");
 
 const FRONTEND_URL = "http://127.0.0.1:5173";
 
@@ -37,12 +39,14 @@ function waitForFrontend(maxRetries = 60, intervalMs = 500) {
 }
 
 function createWindow() {
+  const iconPath = path.join(__dirname, "icon.ico");
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1024,
     minHeight: 700,
     autoHideMenuBar: true,
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false

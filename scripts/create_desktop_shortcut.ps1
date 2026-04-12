@@ -17,7 +17,12 @@ $iconPath = Join-Path $root "desktop\icon.ico"
 if (Test-Path $iconPath) {
   $shortcut.IconLocation = $iconPath
 } else {
-  $shortcut.IconLocation = "$env:SystemRoot\System32\shell32.dll,220"
+  $electronExe = Join-Path $root "desktop\node_modules\electron\dist\electron.exe"
+  if (Test-Path $electronExe) {
+    $shortcut.IconLocation = "$electronExe,0"
+  } else {
+    $shortcut.IconLocation = "$env:SystemRoot\System32\shell32.dll,220"
+  }
 }
 $shortcut.Description = "LoRA制作ワークベンチ (Desktop)"
 $shortcut.Save()

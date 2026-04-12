@@ -44,6 +44,11 @@ class DropUrlIn(BaseModel):
     url: str = Field(min_length=5, max_length=2000)
 
 
+class CandidateRemoveIn(BaseModel):
+    project_id: int
+    candidate_ids: list[int] = Field(default_factory=list)
+
+
 class TrainingStartIn(BaseModel):
     project_id: int
     preset_id: int | None = None

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import imghdr
+import json
 import re
 import shutil
 import subprocess
@@ -14,11 +15,12 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
 
 from ..db import get_conn
-from ..schemas import CollectorImportIn, CollectorScanIn, DropUrlIn, RepeatFolderIn
+from ..schemas import CandidateRemoveIn, CollectorImportIn, CollectorScanIn, DropUrlIn, RepeatFolderIn
 
 router = APIRouter(prefix="/collector", tags=["collector"])
 SCAN_CACHE: dict[int, list[dict]] = {}
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
+PIXIV_ARTWORK_RE = re.compile(r"pixiv\.net/(?:[a-z]{2}/)?artworks/(\d+)", flags=re.IGNORECASE)
 
 
 def _slugify(text: str) -> str:
@@ -173,6 +175,10 @@ def _scan_from_url_live(project: dict, project_id: int, url: str, limit: int) ->
     if parsed.scheme not in {"http", "https"}:
         return []
 
+    pixiv_items = _scan_from_pixiv_artwork(project, project_id, target, limit)
+    if pixiv_items:
+        return pixiv_items
+
     try:
         raw, ctype = _fetch_url_bytes(target)
     except Exception:
@@ -198,6 +204,73 @@ def _scan_from_url_live(project: dict, project_id: int, url: str, limit: int) ->
             if not kind and "image/" not in img_type:
                 continue
             stem = Path(urlparse(img_url).path).stem or f"image_{i}"
+            local = _save_downloaded_image(project_id, img_raw, stem, i)
+            item = _append_candidate_from_file(project, project_id, local, stem, i)
+            item["source_url"] = img_url
+            out.append(item)
+        except Exception:
+            continue
+    return out
+
+
+def _extract_pixiv_artwork_id(url: str) -> str:
+    m = PIXIV_ARTWORK_RE.search(url)
+    return m.group(1) if m else ""
+
+
+def _scan_from_pixiv_artwork(project: dict, project_id: int, artwork_url: str, limit: int) -> list[dict]:
+    artwork_id = _extract_pixiv_artwork_id(artwork_url)
+    if not artwork_id:
+        return []
+
+    ajax_url = f"https://www.pixiv.net/ajax/illust/{artwork_id}/pages?lang=ja"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36",
+        "Referer": artwork_url,
+        "Accept": "application/json, text/plain, */*",
+    }
+    try:
+        req = Request(ajax_url, headers=headers)
+        with urlopen(req, timeout=20) as resp:
+            raw = resp.read()
+    except Exception:
+        return []
+
+    try:
+        payload = json.loads(raw.decode("utf-8", errors="ignore"))
+    except Exception:
+        return []
+
+    body = payload.get("body")
+    if not isinstance(body, list):
+        return []
+
+    image_urls: list[str] = []
+    for page in body:
+        if not isinstance(page, dict):
+            continue
+        urls = page.get("urls")
+        if not isinstance(urls, dict):
+            continue
+        candidate = (
+            urls.get("original")
+            or urls.get("regular")
+            or urls.get("small")
+            or urls.get("thumb_mini")
+        )
+        if isinstance(candidate, str) and candidate and candidate not in image_urls:
+            image_urls.append(candidate)
+        if len(image_urls) >= limit:
+            break
+
+    out: list[dict] = []
+    for i, img_url in enumerate(image_urls, start=1):
+        try:
+            img_raw, img_type = _fetch_url_bytes(img_url, referer=artwork_url)
+            kind = imghdr.what(None, h=img_raw)
+            if not kind and "image/" not in img_type:
+                continue
+            stem = Path(urlparse(img_url).path).stem or f"pixiv_{artwork_id}_{i}"
             local = _save_downloaded_image(project_id, img_raw, stem, i)
             item = _append_candidate_from_file(project, project_id, local, stem, i)
             item["source_url"] = img_url
@@ -566,6 +639,20 @@ def _drop_url_impl(payload: DropUrlIn) -> dict:
     if parsed.scheme not in {"http", "https"}:
         raise HTTPException(status_code=400, detail="only http/https URLs are supported")
 
+    if _extract_pixiv_artwork_id(payload.url.strip()):
+        pixiv_items = _scan_from_pixiv_artwork(project, payload.project_id, payload.url.strip(), limit=1)
+        if pixiv_items:
+            # keep incremental id continuity with current cache
+            item = dict(pixiv_items[0])
+            item["id"] = next_id
+            SCAN_CACHE[payload.project_id] = cache + [item]
+            return {
+                "project_id": payload.project_id,
+                "added_count": 1,
+                "items": SCAN_CACHE[payload.project_id],
+                "message": "pixiv URL image added to candidates",
+            }
+
     try:
         req = Request(payload.url.strip(), headers={"User-Agent": "LoRA-Workbench/1.0"})
         with urlopen(req, timeout=15) as resp:
@@ -624,6 +711,56 @@ def drop_url(payload: DropUrlIn) -> dict:
 @router.post("/drop_url")
 def drop_url_legacy(payload: DropUrlIn) -> dict:
     return _drop_url_impl(payload)
+
+
+@router.post("/remove-candidates")
+def remove_candidates(payload: CandidateRemoveIn) -> dict:
+    _ensure_project(payload.project_id)
+    remove_ids = {int(x) for x in payload.candidate_ids}
+    cache = SCAN_CACHE.get(payload.project_id, [])
+    if not cache or not remove_ids:
+        return {
+            "project_id": payload.project_id,
+            "removed_count": 0,
+            "items": cache,
+            "message": "no candidates removed",
+        }
+
+    drop_dir = _drop_cache_dir(payload.project_id).resolve()
+    kept: list[dict] = []
+    removed_count = 0
+    for item in cache:
+        item_id = int(item.get("id", 0))
+        if item_id not in remove_ids:
+            kept.append(item)
+            continue
+        removed_count += 1
+        src = item.get("source_file")
+        if isinstance(src, str) and src:
+            try:
+                p = Path(src).resolve()
+                if p.exists() and p.is_file() and drop_dir in p.parents:
+                    p.unlink()
+            except OSError:
+                pass
+
+    reindexed: list[dict] = []
+    for i, item in enumerate(kept, start=1):
+        x = dict(item)
+        x["id"] = i
+        reindexed.append(x)
+    SCAN_CACHE[payload.project_id] = reindexed
+    return {
+        "project_id": payload.project_id,
+        "removed_count": removed_count,
+        "items": reindexed,
+        "message": "candidates removed",
+    }
+
+
+@router.post("/remove_candidates")
+def remove_candidates_legacy(payload: CandidateRemoveIn) -> dict:
+    return remove_candidates(payload)
 
 
 @router.post("/prepare-repeat-folder")
