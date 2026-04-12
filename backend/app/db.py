@@ -20,10 +20,12 @@ def init_db() -> None:
         CREATE TABLE IF NOT EXISTS projects (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
+            project_type TEXT NOT NULL DEFAULT 'character',
             base_dir TEXT NOT NULL,
             dataset_dir TEXT NOT NULL,
             captions_dir TEXT NOT NULL,
             outputs_dir TEXT NOT NULL,
+            library_dir TEXT NOT NULL DEFAULT '',
             preset_id INTEGER,
             status TEXT NOT NULL DEFAULT 'idle',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -93,6 +95,8 @@ def init_db() -> None:
     _ensure_column(cur, "training_runs", "current_step", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(cur, "training_runs", "total_epochs", "INTEGER NOT NULL DEFAULT 5")
     _ensure_column(cur, "training_runs", "steps_per_epoch", "INTEGER NOT NULL DEFAULT 20")
+    _ensure_column(cur, "projects", "project_type", "TEXT NOT NULL DEFAULT 'character'")
+    _ensure_column(cur, "projects", "library_dir", "TEXT NOT NULL DEFAULT ''")
     conn.commit()
     conn.close()
 

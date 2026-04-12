@@ -53,6 +53,8 @@ npm run dev
 - 外部連携設定
   - Python / kohya / ComfyUI / WD14 のパス保存
   - 初回アクセス時に自動検出結果を自動入力
+  - 一時保存ディレクトリ（`temp_dir`）を設定可能
+  - データセット補完ベース（`dataset_base_dir`）を設定可能
   - 自動検出（autodetect）
   - 接続状態チェック（path存在 + pythonバージョン確認）
 - 疑似学習ジョブ
@@ -61,6 +63,10 @@ npm run dev
   - `stop-at-epoch` でepoch終端停止予約
   - `resume` で再開
   - epoch終端で checkpoint と preview プレースホルダ生成
+- 収集機能
+  - `dataset_base_dir/character` または `dataset_base_dir/style` を優先スキャン
+  - 候補画像をサムネイル付きで表示
+  - 一致候補がない場合はURLベースのフォールバック候補を生成
 
 UIは以下メニューで利用できます。
 - Dashboard

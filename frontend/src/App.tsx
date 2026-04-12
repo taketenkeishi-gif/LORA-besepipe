@@ -7,11 +7,13 @@ type TabId = "dashboard" | "projects" | "workflow" | "integrations" | "guide";
 type Project = {
   id: number;
   name: string;
+  project_type: "character" | "style";
   status: string;
   base_dir: string;
   dataset_dir: string;
   captions_dir: string;
   outputs_dir: string;
+  library_dir: string;
 };
 
 type TrainingStatus = {
@@ -38,6 +40,8 @@ type ToolPaths = {
   kohya_root: string;
   comfyui_root: string;
   wd14_script: string;
+  temp_dir: string;
+  dataset_base_dir: string;
 };
 
 type IntegrationStatus = {
@@ -62,10 +66,12 @@ export default function App() {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [newProjectName, setNewProjectName] = useState<string>("");
+  const [newProjectType, setNewProjectType] = useState<"character" | "style">("character");
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [statuses, setStatuses] = useState<Record<number, TrainingStatus>>({});
 
   const [scanUrl, setScanUrl] = useState<string>("https://example.com/mock-collection");
+  const [scanKeyword, setScanKeyword] = useState<string>("");
   const [scanItems, setScanItems] = useState<ScanItem[]>([]);
   const [selectedScanIds, setSelectedScanIds] = useState<number[]>([]);
   const [namingTemplate, setNamingTemplate] = useState<string>("{title}_{index}");
@@ -77,7 +83,9 @@ export default function App() {
     python_exe: "",
     kohya_root: "",
     comfyui_root: "",
-    wd14_script: ""
+    wd14_script: "",
+    temp_dir: "",
+    dataset_base_dir: ""
   });
   const [integrationStatus, setIntegrationStatus] = useState<IntegrationStatus | null>(null);
 
@@ -167,7 +175,10 @@ export default function App() {
     if (!newProjectName.trim()) return;
     clearMessages();
     try {
-      const created = await apiPost<Project>("/projects", { name: newProjectName.trim() });
+      const created = await apiPost<Project>("/projects", {
+        name: newProjectName.trim(),
+        project_type: newProjectType
+      });
       setNewProjectName("");
       setSelectedProjectId(created.id);
       setNotice(`プロジェクト「${created.name}」を作成しました。`);
@@ -209,7 +220,9 @@ export default function App() {
     try {
       const result = await apiPost<{ items: ScanItem[] }>("/collector/scan", {
         project_id: selectedProject.id,
-        url: scanUrl
+        url: scanUrl,
+        keyword: scanKeyword,
+        limit: 48
       });
       setScanItems(result.items);
       setSelectedScanIds(result.items.slice(0, 6).map((x) => x.id));
@@ -355,6 +368,10 @@ export default function App() {
                 onChange={(e) => setNewProjectName(e.target.value)}
                 placeholder="例: キャラ名_衣装A_v1"
               />
+              <select value={newProjectType} onChange={(e) => setNewProjectType(e.target.value as "character" | "style")}>
+                <option value="character">Character LoRA</option>
+                <option value="style">Style LoRA</option>
+              </select>
               <button className="btn primary" onClick={createProject}>
                 プロジェクト作成
               </button>
@@ -369,7 +386,9 @@ export default function App() {
                   onClick={() => setSelectedProjectId(p.id)}
                 >
                   <span>{p.name}</span>
-                  <span>{statuses[p.id]?.status ?? "idle"}</span>
+                  <span>
+                    {p.project_type} / {statuses[p.id]?.status ?? "idle"}
+                  </span>
                 </button>
               ))}
             </div>
@@ -393,6 +412,10 @@ export default function App() {
                     <label>
                       収集元URL
                       <input value={scanUrl} onChange={(e) => setScanUrl(e.target.value)} placeholder="https://..." />
+                    </label>
+                    <label>
+                      キーワード（任意）
+                      <input value={scanKeyword} onChange={(e) => setScanKeyword(e.target.value)} placeholder="例: face, closeup, texture" />
                     </label>
                     <button className="btn info" onClick={runScan}>
                       1) 候補画像を取得
@@ -540,6 +563,22 @@ export default function App() {
                     placeholder="...\\tag_images_by_wd14_tagger.py"
                   />
                 </label>
+                <label>
+                  一時保存ディレクトリ
+                  <input
+                    value={toolPaths.temp_dir}
+                    onChange={(e) => setToolPaths({ ...toolPaths, temp_dir: e.target.value })}
+                    placeholder="C:\\...\\.runtime\\tmp"
+                  />
+                </label>
+                <label>
+                  データセット補完ベース
+                  <input
+                    value={toolPaths.dataset_base_dir}
+                    onChange={(e) => setToolPaths({ ...toolPaths, dataset_base_dir: e.target.value })}
+                    placeholder="C:\\ポートフォリオ\\SDXL\\LoRA_Traning\\dataset"
+                  />
+                </label>
               </div>
               <div className="row wrap">
                 <button className="btn info" onClick={autoDetectToolPaths}>
@@ -563,6 +602,8 @@ export default function App() {
                   {integrationRow("kohya", "kohya_root")}
                   {integrationRow("ComfyUI", "comfyui_root")}
                   {integrationRow("WD14", "wd14_script")}
+                  {integrationRow("TempDir", "temp_dir")}
+                  {integrationRow("DatasetBase", "dataset_base_dir")}
                 </ul>
               )}
             </div>

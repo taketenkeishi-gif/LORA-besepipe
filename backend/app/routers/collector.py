@@ -2,28 +2,43 @@ from __future__ import annotations
 
 import base64
 import re
+import shutil
 from pathlib import Path
-from urllib.parse import urlparse
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from fastapi import APIRouter, HTTPException
+from PIL import Image, UnidentifiedImageError
 
 from ..db import get_conn
-
 from ..schemas import CollectorImportIn, CollectorScanIn
 
 router = APIRouter(prefix="/collector", tags=["collector"])
 SCAN_CACHE: dict[int, list[dict]] = {}
-
-# 1x1 transparent PNG
-PNG_1X1 = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7ZbHkAAAAASUVORK5CYII="
-)
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
 
 def _slugify(text: str) -> str:
     v = re.sub(r"[^\w\-]+", "_", text.strip(), flags=re.UNICODE)
     return v.strip("_") or "image"
+
+
+def _settings_value(key: str) -> str:
+    conn = get_conn()
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    conn.close()
+    return str(row["value"]) if row and row["value"] else ""
+
+
+def _ensure_project(project_id: int) -> dict:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT id, dataset_dir, project_type, library_dir FROM projects WHERE id = ?",
+        (project_id,),
+    ).fetchone()
+    conn.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"project not found: {project_id}")
+    return dict(row)
 
 
 def _thumbnail_data_uri(title: str, i: int) -> str:
@@ -44,25 +59,112 @@ def _thumbnail_data_uri(title: str, i: int) -> str:
     return f"data:image/svg+xml;utf8,{quote(svg)}"
 
 
-def _ensure_project(project_id: int) -> dict:
-    conn = get_conn()
-    row = conn.execute(
-        "SELECT id, dataset_dir FROM projects WHERE id = ?",
-        (project_id,),
-    ).fetchone()
-    conn.close()
-    if row is None:
-        raise HTTPException(status_code=404, detail=f"project not found: {project_id}")
-    return dict(row)
+def _thumb_cache_dir() -> Path:
+    temp_dir = _settings_value("temp_dir").strip()
+    if not temp_dir:
+        temp_dir = str(Path(__file__).resolve().parents[3] / ".runtime" / "tmp")
+    d = Path(temp_dir) / "thumb_cache"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _make_cached_thumb(src: Path, title: str, idx: int) -> str:
+    try:
+        cache_name = f"{src.stem}_{src.stat().st_mtime_ns}_{idx}.jpg"
+        cache_name = _slugify(cache_name)
+        out = _thumb_cache_dir() / cache_name
+        if not out.exists():
+            with Image.open(src) as im:
+                im = im.convert("RGB")
+                im.thumbnail((320, 320))
+                im.save(out, format="JPEG", quality=82)
+        # file:// はElectron/ブラウザで制約があるので data URIへ再エンコード
+        raw = out.read_bytes()
+        return "data:image/jpeg;base64," + base64.b64encode(raw).decode("ascii")
+    except (OSError, UnidentifiedImageError):
+        return _thumbnail_data_uri(title, idx)
+
+
+def _aspect(w: int, h: int) -> str:
+    if w > h:
+        return "landscape"
+    if h > w:
+        return "portrait"
+    return "square"
+
+
+def _scan_from_dataset_base(project: dict, keyword: str, limit: int) -> list[dict]:
+    base_dir_raw = _settings_value("dataset_base_dir").strip()
+    base_dir = Path(base_dir_raw) if base_dir_raw else Path(r"C:\ポートフォリオ\SDXL\LoRA_Traning\dataset")
+    scope = base_dir / str(project["project_type"])
+    if not scope.exists():
+        return []
+
+    kws = [k.lower() for k in keyword.split() if k.strip()]
+    files: list[Path] = [p for p in scope.rglob("*") if p.suffix.lower() in IMAGE_EXTS]
+    scored: list[tuple[int, Path]] = []
+    for p in files:
+        score = 0
+        name = p.stem.lower()
+        if kws and any(k in name for k in kws):
+            score += 50
+        if project["project_type"] == "character":
+            if any(k in name for k in ("face", "bust", "portrait", "closeup", "character")):
+                score += 20
+        else:
+            if any(k in name for k in ("style", "texture", "bg", "background", "scene")):
+                score += 20
+        score += int(p.stat().st_size / 1024 / 50)  # 大きめ画像を優先
+        scored.append((score, p))
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    picked = [p for _, p in scored[:limit]]
+    out: list[dict] = []
+    for i, p in enumerate(picked, start=1):
+        try:
+            with Image.open(p) as im:
+                w, h = im.size
+        except (OSError, UnidentifiedImageError):
+            w, h = (0, 0)
+        title = p.stem
+        out.append(
+            {
+                "id": i,
+                "title": title,
+                "width": w,
+                "height": h,
+                "aspect": _aspect(max(w, 1), max(h, 1)),
+                "source_url": str(p),
+                "source_file": str(p),
+                "thumbnail_url": _make_cached_thumb(p, title, i),
+            }
+        )
+    return out
 
 
 @router.post("/scan")
 def scan(payload: CollectorScanIn) -> dict:
-    _ensure_project(payload.project_id)
+    project = _ensure_project(payload.project_id)
+    keyword = payload.keyword.strip()
+
+    # 1) dataset_base を優先スキャン
+    dataset_items = _scan_from_dataset_base(project, keyword=keyword, limit=payload.limit)
+    if dataset_items:
+        SCAN_CACHE[payload.project_id] = dataset_items
+        return {
+            "project_id": payload.project_id,
+            "url": payload.url,
+            "mode": "dataset_base",
+            "detected": len(dataset_items),
+            "items": dataset_items,
+            "message": f"dataset_base({project['project_type']}) から候補を取得",
+        }
+
+    # 2) fallback: URL由来のモック候補
     parsed = urlparse(payload.url)
     seed = _slugify(Path(parsed.path).stem or parsed.netloc or "image")
     items = []
-    for i in range(1, 13):
+    for i in range(1, min(payload.limit, 24) + 1):
         title = f"{seed}_{i:02d}"
         items.append(
             {
@@ -79,9 +181,10 @@ def scan(payload: CollectorScanIn) -> dict:
     return {
         "project_id": payload.project_id,
         "url": payload.url,
+        "mode": "mock_url",
         "detected": len(items),
         "items": items,
-        "message": "mock scan completed (本番収集ロジックは未実装)",
+        "message": "fallback mock scan completed",
     }
 
 
@@ -95,6 +198,9 @@ def import_selected(payload: CollectorImportIn) -> dict:
 
     dataset_dir = Path(project["dataset_dir"])
     dataset_dir.mkdir(parents=True, exist_ok=True)
+    library_dir = Path(project["library_dir"])
+    library_dir.mkdir(parents=True, exist_ok=True)
+
     conn = get_conn()
     cur = conn.cursor()
     imported = []
@@ -106,7 +212,18 @@ def import_selected(payload: CollectorImportIn) -> dict:
             payload.naming_template.replace("{title}", _slugify(item["title"])).replace("{index}", f"{order:04d}")
         )
         out_path = dataset_dir / f"{filename}.png"
-        out_path.write_bytes(PNG_1X1)
+
+        src_file = item.get("source_file")
+        if src_file and Path(src_file).exists():
+            shutil.copy2(src_file, out_path)
+            # 補完データセット側にも保管（同名衝突回避）
+            lib_path = library_dir / out_path.name
+            if not lib_path.exists():
+                shutil.copy2(src_file, lib_path)
+        else:
+            # mock fallback
+            out_path.write_bytes(base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7ZbHkAAAAASUVORK5CYII="))
+
         cur.execute(
             """
             INSERT INTO dataset_items(project_id, file_path, width, height, aspect, selected)
@@ -115,9 +232,9 @@ def import_selected(payload: CollectorImportIn) -> dict:
             (
                 payload.project_id,
                 str(out_path),
-                item["width"],
-                item["height"],
-                item["aspect"],
+                item.get("width", 0),
+                item.get("height", 0),
+                item.get("aspect", "unknown"),
             ),
         )
         imported.append(str(out_path))

@@ -11,7 +11,7 @@ from ..schemas import ToolPathsIn, ToolPathsOut
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
-SETTINGS_KEYS = ("python_exe", "kohya_root", "comfyui_root", "wd14_script")
+SETTINGS_KEYS = ("python_exe", "kohya_root", "comfyui_root", "wd14_script", "temp_dir", "dataset_base_dir")
 
 
 def _read_paths() -> dict[str, str]:
@@ -44,6 +44,7 @@ def _write_paths(payload: dict[str, str]) -> None:
 def _autodetect() -> dict[str, str]:
     result = {k: "" for k in SETTINGS_KEYS}
     project_root = Path(__file__).resolve().parents[3]
+    default_dataset_base = Path(r"C:\ポートフォリオ\SDXL\LoRA_Traning\dataset")
 
     python_path = shutil.which("python") or ""
     if python_path:
@@ -79,6 +80,12 @@ def _autodetect() -> dict[str, str]:
     wd14_local = project_root / "external_tools" / "WD14py" / "tag_images_by_wd14_tagger.py"
     if wd14_local.exists():
         result["wd14_script"] = str(wd14_local.resolve())
+
+    result["temp_dir"] = str((project_root / ".runtime" / "tmp").resolve())
+    if default_dataset_base.exists():
+        result["dataset_base_dir"] = str(default_dataset_base.resolve())
+    else:
+        result["dataset_base_dir"] = str((project_root / "external_dataset").resolve())
 
     return result
 
@@ -143,14 +150,31 @@ def get_tool_paths() -> ToolPathsOut:
 @router.put("/tool-paths", response_model=ToolPathsOut)
 def update_tool_paths(payload: ToolPathsIn) -> ToolPathsOut:
     _write_paths(payload.model_dump())
-    return ToolPathsOut(**_read_paths())
+    paths = _read_paths()
+    _ensure_runtime_dirs(paths)
+    return ToolPathsOut(**paths)
+
+
+def _ensure_runtime_dirs(paths: dict[str, str]) -> None:
+    for key in ("temp_dir", "dataset_base_dir"):
+        p = paths.get(key, "").strip()
+        if not p:
+            continue
+        Path(p).mkdir(parents=True, exist_ok=True)
+    # dataset_base_dir直下に型別フォルダを用意
+    base = paths.get("dataset_base_dir", "").strip()
+    if base:
+        Path(base, "character").mkdir(parents=True, exist_ok=True)
+        Path(base, "style").mkdir(parents=True, exist_ok=True)
 
 
 @router.post("/tool-paths/autodetect", response_model=ToolPathsOut)
 def autodetect_tool_paths() -> ToolPathsOut:
     detected = _autodetect()
     _write_paths(detected)
-    return ToolPathsOut(**_read_paths())
+    paths = _read_paths()
+    _ensure_runtime_dirs(paths)
+    return ToolPathsOut(**paths)
 
 
 @router.get("/integrations/status")
@@ -161,5 +185,7 @@ def integrations_status() -> dict:
         "kohya_root": _check_dir(paths["kohya_root"]),
         "comfyui_root": _check_dir(paths["comfyui_root"]),
         "wd14_script": _check_file(paths["wd14_script"]),
+        "temp_dir": _check_dir(paths["temp_dir"]),
+        "dataset_base_dir": _check_dir(paths["dataset_base_dir"]),
     }
     return {"paths": paths, "checks": checks}

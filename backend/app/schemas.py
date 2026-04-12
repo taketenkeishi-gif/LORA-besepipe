@@ -5,21 +5,26 @@ from pydantic import BaseModel, Field
 
 class ProjectCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
+    project_type: str = Field(default="character", pattern="^(character|style)$")
 
 
 class ProjectOut(BaseModel):
     id: int
     name: str
+    project_type: str
     status: str
     base_dir: str
     dataset_dir: str
     captions_dir: str
     outputs_dir: str
+    library_dir: str
 
 
 class CollectorScanIn(BaseModel):
     project_id: int
     url: str
+    keyword: str = ""
+    limit: int = Field(default=24, ge=1, le=200)
 
 
 class CollectorImportIn(BaseModel):
@@ -48,6 +53,8 @@ class ToolPathsIn(BaseModel):
     kohya_root: str = ""
     comfyui_root: str = ""
     wd14_script: str = ""
+    temp_dir: str = ""
+    dataset_base_dir: str = ""
 
 
 class ToolPathsOut(BaseModel):
@@ -55,3 +62,5 @@ class ToolPathsOut(BaseModel):
     kohya_root: str
     comfyui_root: str
     wd14_script: str
+    temp_dir: str
+    dataset_base_dir: str

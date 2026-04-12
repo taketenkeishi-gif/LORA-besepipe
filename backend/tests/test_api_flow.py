@@ -9,10 +9,12 @@ def test_health_and_projects(client):
     assert health.status_code == 200
     assert health.json()["status"] == "ok"
 
-    created = client.post("/projects", json={"name": "test_project"})
+    created = client.post("/projects", json={"name": "test_project", "project_type": "character"})
     assert created.status_code == 200
     project = created.json()
     assert project["name"] == "test_project"
+    assert project["project_type"] == "character"
+    assert "character" in project["library_dir"]
 
     listed = client.get("/projects")
     assert listed.status_code == 200
@@ -22,18 +24,19 @@ def test_health_and_projects(client):
 
 
 def test_collection_import_and_tags(client):
-    created = client.post("/projects", json={"name": "collect_project"})
+    created = client.post("/projects", json={"name": "collect_project", "project_type": "style"})
     project_id = created.json()["id"]
     dataset_dir = Path(created.json()["dataset_dir"])
     captions_dir = Path(created.json()["captions_dir"])
 
     scan = client.post(
         "/collector/scan",
-        json={"project_id": project_id, "url": "https://example.com/user/mock"},
+        json={"project_id": project_id, "url": "https://example.com/user/mock", "keyword": "mock", "limit": 12},
     )
     assert scan.status_code == 200
     assert scan.json()["detected"] == 12
-    assert scan.json()["items"][0]["thumbnail_url"].startswith("data:image/svg+xml;utf8,")
+    thumb = scan.json()["items"][0]["thumbnail_url"]
+    assert thumb.startswith("data:image/svg+xml;utf8,") or thumb.startswith("data:image/jpeg;base64,")
 
     selected_ids = [x["id"] for x in scan.json()["items"][:4]]
     imported = client.post(
@@ -60,7 +63,7 @@ def test_collection_import_and_tags(client):
 
 
 def test_training_progress_and_previews(client):
-    created = client.post("/projects", json={"name": "training_project"})
+    created = client.post("/projects", json={"name": "training_project", "project_type": "character"})
     project_id = created.json()["id"]
 
     started = client.post(
@@ -94,26 +97,53 @@ def test_training_progress_and_previews(client):
     assert {"face", "bust", "full", "bg"}.issubset(all_slots)
 
 
-def test_settings_paths_and_status(client):
+def test_settings_paths_and_status(client, tmp_path):
     current = client.get("/settings/tool-paths")
     assert current.status_code == 200
-    assert set(current.json().keys()) == {"python_exe", "kohya_root", "comfyui_root", "wd14_script"}
+    assert set(current.json().keys()) == {
+        "python_exe",
+        "kohya_root",
+        "comfyui_root",
+        "wd14_script",
+        "temp_dir",
+        "dataset_base_dir",
+    }
+
+    tmp_kohya = (tmp_path / "kohya").resolve()
+    tmp_comfy = (tmp_path / "comfy").resolve()
+    tmp_wd14 = (tmp_path / "wd14.py").resolve()
+    tmp_tmp = (tmp_path / "tmp").resolve()
+    tmp_dataset = (tmp_path / "dataset").resolve()
+    tmp_kohya.mkdir(parents=True, exist_ok=True)
+    tmp_comfy.mkdir(parents=True, exist_ok=True)
+    tmp_dataset.mkdir(parents=True, exist_ok=True)
+    tmp_wd14.write_text("# dummy", encoding="utf-8")
 
     updated = client.put(
         "/settings/tool-paths",
         json={
             "python_exe": "",
-            "kohya_root": "C:/dummy/kohya",
-            "comfyui_root": "C:/dummy/comfyui",
-            "wd14_script": "C:/dummy/wd14.py",
+            "kohya_root": str(tmp_kohya),
+            "comfyui_root": str(tmp_comfy),
+            "wd14_script": str(tmp_wd14),
+            "temp_dir": str(tmp_tmp),
+            "dataset_base_dir": str(tmp_dataset),
         },
     )
     assert updated.status_code == 200
-    assert updated.json()["kohya_root"] == "C:/dummy/kohya"
+    assert updated.json()["kohya_root"] == str(tmp_kohya)
+    assert updated.json()["temp_dir"] == str(tmp_tmp)
 
     status = client.get("/settings/integrations/status")
     assert status.status_code == 200
     payload = status.json()
     assert "paths" in payload
     assert "checks" in payload
-    assert set(payload["checks"].keys()) == {"python_exe", "kohya_root", "comfyui_root", "wd14_script"}
+    assert set(payload["checks"].keys()) == {
+        "python_exe",
+        "kohya_root",
+        "comfyui_root",
+        "wd14_script",
+        "temp_dir",
+        "dataset_base_dir",
+    }

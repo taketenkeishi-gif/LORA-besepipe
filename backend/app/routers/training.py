@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
+from PIL import Image, ImageDraw
 
 from ..db import get_conn
 from ..schemas import TrainingControlIn, TrainingStartIn
@@ -73,8 +74,13 @@ def _write_preview_and_checkpoint(conn, project_id: int, epoch: int) -> str:
     )
     checkpoint_id = cur.lastrowid
     for slot in SLOTS:
-        p = previews_dir / f"e{epoch}_{slot}.txt"
-        p.write_text(f"preview placeholder for epoch {epoch}, slot {slot}", encoding="utf-8")
+        p = previews_dir / f"e{epoch}_{slot}.png"
+        img = Image.new("RGB", (512, 512), color=(30 + epoch * 10 % 200, 40 + len(slot) * 20, 90))
+        d = ImageDraw.Draw(img)
+        d.text((24, 24), f"Project {project_id}", fill=(240, 240, 240))
+        d.text((24, 56), f"Epoch {epoch}", fill=(240, 240, 240))
+        d.text((24, 88), f"Slot {slot}", fill=(240, 240, 240))
+        img.save(p, format="PNG")
         cur.execute(
             """
             INSERT INTO preview_samples(checkpoint_id, slot, image_path)
