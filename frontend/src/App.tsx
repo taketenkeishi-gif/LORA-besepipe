@@ -341,6 +341,22 @@ export default function App() {
     }
   }
 
+  function onDragEnterBoard(ev: DragEvent<HTMLDivElement>) {
+    ev.preventDefault();
+    setDragActive(true);
+  }
+
+  function onDragOverBoard(ev: DragEvent<HTMLDivElement>) {
+    ev.preventDefault();
+    setDragActive(true);
+  }
+
+  function onDragLeaveBoard(ev: DragEvent<HTMLDivElement>) {
+    const next = ev.relatedTarget as Node | null;
+    if (next && ev.currentTarget.contains(next)) return;
+    setDragActive(false);
+  }
+
   function extractDroppedUrl(ev: DragEvent<HTMLDivElement>): string {
     const uriList = ev.dataTransfer.getData("text/uri-list");
     if (uriList?.trim()) return uriList.trim().split("\n")[0].trim();
@@ -598,7 +614,13 @@ export default function App() {
             {!selectedProject ? (
               <p className="muted">プロジェクトを選択してください。</p>
             ) : (
-              <div className="card">
+              <div
+                className={dragActive ? "card dropBoard active" : "card dropBoard"}
+                onDrop={onDropFiles}
+                onDragEnter={onDragEnterBoard}
+                onDragOver={onDragOverBoard}
+                onDragLeave={onDragLeaveBoard}
+              >
                 <label>収集元URL<input value={scanUrl} onChange={(e) => setScanUrl(e.target.value)} /></label>
                 <div className="row">
                   <label>キーワード<input value={scanKeyword} onChange={(e) => setScanKeyword(e.target.value)} /></label>
@@ -624,18 +646,8 @@ export default function App() {
                 </div>
                 <div
                   className={dragActive ? "dropZone active" : "dropZone"}
-                  onDrop={onDropFiles}
-                  onDragEnter={(e) => {
-                    e.preventDefault();
-                    setDragActive(true);
-                  }}
-                  onDragLeave={() => setDragActive(false)}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragActive(true);
-                  }}
                 >
-                  ここに画像ファイルをドラッグ&ドロップ。Webは画像URLのドロップにも対応。
+                  画像ファイル/画像URLはこの画面のどこにドロップしても追加できます。
                 </div>
                 {!apiCaps.dropFiles && <p className="errorInline">D&D APIが未対応のバックエンドです。`start_web.bat` で再起動してください。</p>}
                 <div className="row wrap">
@@ -648,6 +660,7 @@ export default function App() {
                     <button
                       key={i.id}
                       className={selectedScanIds.includes(i.id) ? "thumbCard active" : "thumbCard"}
+                      title={i.title}
                       onClick={() => toggleScanSelection(i.id)}
                       onDoubleClick={() => setExpandedTagCardId((prev) => (prev === i.id ? null : i.id))}
                     >
@@ -657,9 +670,7 @@ export default function App() {
                           e.currentTarget.src = "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='200'%3E%3Crect width='100%25' height='100%25' fill='%23dbe6f4'/%3E%3Ctext x='16' y='104' fill='%234c5f7a' font-size='14'%3Epreview unavailable%3C/text%3E%3C/svg%3E";
                         }} /> : <div className="thumbFallback">NO IMAGE</div>}
                       </div>
-                      <span className="thumbTitle">{i.title}</span>
                       <span className="thumbMeta">{i.width}x{i.height} / {i.aspect}</span>
-                      <span className="thumbMeta">ダブルクリックでタグ表示</span>
                       {expandedTagCardId === i.id && (
                         <div className="tagFlow">
                           {(i.tags || []).map((t) => (
@@ -673,10 +684,10 @@ export default function App() {
                 <div className="row">
                   <input value={namingTemplate} onChange={(e) => setNamingTemplate(e.target.value)} placeholder="{title}_{index}" />
                 </div>
-                <div className="row">
-                  <label>繰り返し数<input type="number" value={repeatCount} onChange={(e) => setRepeatCount(Number(e.target.value || 1))} /></label>
-                  <label>フォルダ名<input value={repeatFolderTitle} onChange={(e) => setRepeatFolderTitle(e.target.value)} /></label>
-                  <button className="btn primary" onClick={prepareRepeatFolder}>4) {`<repeats>_<title>`} 作成</button>
+                <div className="repeatRow">
+                  <label>繰り返し数（フォルダ先頭）<input type="number" value={repeatCount} onChange={(e) => setRepeatCount(Number(e.target.value || 1))} /></label>
+                  <label>フォルダ名（学習対象）<input value={repeatFolderTitle} onChange={(e) => setRepeatFolderTitle(e.target.value)} /></label>
+                  <button className="btn cta primary repeatBtn" onClick={prepareRepeatFolder}>4) 学習用フォルダ作成（{`${repeatCount}_${repeatFolderTitle || "title"}`})</button>
                 </div>
               </div>
             )}

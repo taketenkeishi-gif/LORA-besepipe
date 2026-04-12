@@ -99,6 +99,16 @@ body {
   gap: 10px;
 }
 
+.dropBoard {
+  transition: box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.dropBoard.active {
+  border-color: #2f81cd;
+  box-shadow: inset 0 0 0 2px rgba(47, 129, 205, 0.25);
+  background: #e9f3ff;
+}
+
 h2,
 h3 {
   margin: 0;
@@ -465,6 +475,17 @@ label {
   font-weight: 700;
 }
 
+.repeatRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.2fr;
+  gap: 10px;
+  align-items: end;
+}
+
+.repeatBtn {
+  width: 100%;
+}
+
 .formGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -533,6 +554,9 @@ label {
     grid-template-columns: repeat(2, minmax(100px, 1fr));
   }
   .ctaRow {
+    grid-template-columns: 1fr;
+  }
+  .repeatRow {
     grid-template-columns: 1fr;
   }
   .row {
