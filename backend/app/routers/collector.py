@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
+from urllib.parse import urljoin
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from PIL import Image, UnidentifiedImageError
@@ -109,6 +110,19 @@ def _ext_from_kind(kind: str | None) -> str:
     if kind in {"png", "gif", "bmp", "webp"}:
         return f".{kind}"
     return ".png"
+
+
+def _extract_image_url_from_html(base_url: str, html: str) -> str | None:
+    patterns = [
+        r"""<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']""",
+        r"""<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']""",
+        r"""<img[^>]+src=["']([^"']+)["']""",
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, html, flags=re.IGNORECASE)
+        if m and m.group(1):
+            return urljoin(base_url, m.group(1))
+    return None
 
 
 def _make_cached_thumb(src: Path, title: str, idx: int) -> str:
@@ -444,17 +458,36 @@ def drop_url(payload: DropUrlIn) -> dict:
     if not raw:
         raise HTTPException(status_code=400, detail="empty response body")
 
+    source_url = payload.url.strip()
+    if "image/" not in ctype:
+        try:
+            html = raw.decode("utf-8", errors="ignore")
+        except Exception:
+            html = ""
+        candidate = _extract_image_url_from_html(source_url, html)
+        if candidate:
+            try:
+                req2 = Request(candidate, headers={"User-Agent": "LoRA-Workbench/1.0"})
+                with urlopen(req2, timeout=15) as resp2:
+                    raw = resp2.read()
+                    ctype = (resp2.headers.get("Content-Type") or "").lower()
+                source_url = candidate
+            except Exception:
+                pass
+
     kind = imghdr.what(None, h=raw)
     if not kind and "image/" not in ctype:
         raise HTTPException(status_code=400, detail=f"URL is not an image: {ctype or 'unknown content-type'}")
 
     ext = _ext_from_kind(kind)
-    base = Path(parsed.path).stem or f"url_{next_id}"
+    parsed_src = urlparse(source_url)
+    base = Path(parsed_src.path).stem or f"url_{next_id}"
     safe_name = _slugify(base) + ext
     dst = _drop_cache_dir(payload.project_id) / f"{next_id}_{safe_name}"
     dst.write_bytes(raw)
 
     item = _append_candidate_from_file(project, payload.project_id, dst, base, next_id)
+    item["source_url"] = source_url
     SCAN_CACHE[payload.project_id] = cache + [item]
     return {
         "project_id": payload.project_id,

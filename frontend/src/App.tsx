@@ -280,7 +280,10 @@ export default function App() {
     if (!selectedProject) return;
     ev.preventDefault();
     clearMessages();
-    const files = Array.from(ev.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
+    const files = Array.from(ev.dataTransfer.files).filter((f) => {
+      if (f.type?.startsWith("image/")) return true;
+      return /\.(png|jpe?g|webp|bmp|gif)$/i.test(f.name);
+    });
     if (files.length === 0) {
       const maybeUrl = extractDroppedUrl(ev);
       if (maybeUrl) {
@@ -323,9 +326,22 @@ export default function App() {
       setScanItems(json.items || []);
       setNotice("URL画像を候補に追加しました。");
     } catch (e) {
+      // ページURLなどで直接追加できない場合はscanにフォールバック
       setScanUrl(url);
-      setNotice("URLは収集欄に反映しました。画像URLでない場合は「候補画像取得」を実行してください。");
-      setError(`URL追加失敗: ${String(e)}`);
+      try {
+        const result = await apiPost<{ items: ScanItem[]; detected: number; mode: string }>("/collector/scan", {
+          project_id: projectId,
+          url,
+          keyword: buildKeyword(),
+          limit: 60
+        });
+        setScanItems(result.items);
+        setSelectedScanIds(result.items.slice(0, 12).map((x) => x.id));
+        setNotice(`URLドロップを収集にフォールバック: ${result.detected} 件 (${result.mode})`);
+      } catch (inner) {
+        setNotice("URLは収集欄に反映しました。");
+        setError(`URL追加失敗: ${String(e)} / scan失敗: ${String(inner)}`);
+      }
     }
   }
 
@@ -597,7 +613,29 @@ export default function App() {
             ) : (
               <>
                 <div className="card">
-                  <div className="row">
+                  <div className="trainingSummary">
+                    <div className="metricBox">
+                      <div className="metricLabel">状態</div>
+                      <div className="metricValue">{currentStatus?.status ?? "idle"}</div>
+                    </div>
+                    <div className="metricBox">
+                      <div className="metricLabel">Epoch</div>
+                      <div className="metricValue">{currentStatus?.epoch ?? 0} / {currentStatus?.total_epochs ?? 0}</div>
+                    </div>
+                    <div className="metricBox">
+                      <div className="metricLabel">Step</div>
+                      <div className="metricValue">{currentStatus?.done_steps ?? 0} / {currentStatus?.total_steps ?? 0}</div>
+                    </div>
+                    <div className="metricBox">
+                      <div className="metricLabel">残り目安</div>
+                      <div className="metricValue">{etaText(currentStatus?.eta_seconds)}</div>
+                    </div>
+                  </div>
+                  <div className="progressBar big">
+                    <div className="progressFill" style={{ width: `${Math.min(100, Math.max(0, currentStatus?.progress_percent ?? 0))}%` }} />
+                  </div>
+                  <p className="muted">進捗: {currentStatus?.progress_percent ?? 0}%</p>
+                  <div className="row wrap">
                     <label>epochs<input type="number" value={epochs} onChange={(e) => setEpochs(Number(e.target.value || 1))} /></label>
                     <label>rank<input type="number" value={rank} onChange={(e) => setRank(Number(e.target.value || 1))} /></label>
                     <label>alpha<input type="number" step="0.1" value={alpha} onChange={(e) => setAlpha(Number(e.target.value || 1))} /></label>
@@ -605,15 +643,15 @@ export default function App() {
                     <label>保存間隔(epoch)<input type="number" value={saveEvery} onChange={(e) => setSaveEvery(Number(e.target.value || 1))} /></label>
                     <label>解像度<input type="number" value={resolution} onChange={(e) => setResolution(Number(e.target.value || 512))} /></label>
                   </div>
-                  <div className="row">
+                  <div className="row wrap">
                     <label>出力名<input value={outputName} onChange={(e) => setOutputName(e.target.value)} /></label>
                     <label>学習元Checkpoint<input value={baseCkpt} onChange={(e) => setBaseCkpt(e.target.value)} /></label>
                   </div>
-                  <div className="row">
+                  <div className="row wrap">
                     <label>教師画像フォルダ<input value={trainDir} onChange={(e) => setTrainDir(e.target.value)} /></label>
                     <label>正則化画像フォルダ<input value={regDir} onChange={(e) => setRegDir(e.target.value)} /></label>
                   </div>
-                  <div className="row">
+                  <div className="row wrap">
                     <label>プレビュー Positive<input value={prompts.positive_prompt} onChange={(e) => setPrompts({ ...prompts, positive_prompt: e.target.value })} /></label>
                     <label>プレビュー Negative<input value={prompts.negative_prompt} onChange={(e) => setPrompts({ ...prompts, negative_prompt: e.target.value })} /></label>
                     <button className="btn secondary" onClick={savePreviewPrompts}>プロンプト保存</button>
@@ -623,12 +661,6 @@ export default function App() {
                     <button className="btn secondary" onClick={() => trainingAction("/training/stop-at-epoch", "epoch区切り停止予約")}>epoch区切り停止</button>
                     <button className="btn warning" onClick={() => trainingAction("/training/stop-now", "すぐ停止")}>すぐ停止</button>
                     <button className="btn info" onClick={() => trainingAction("/training/resume", "再開")}>再開</button>
-                  </div>
-                  <p className="muted">
-                    状態: {currentStatus?.status ?? "idle"} / epoch: {currentStatus?.epoch ?? 0}/{currentStatus?.total_epochs ?? 0} / step: {currentStatus?.done_steps ?? 0}/{currentStatus?.total_steps ?? 0} / 進捗: {currentStatus?.progress_percent ?? 0}% / 残り目安: {etaText(currentStatus?.eta_seconds)}
-                  </p>
-                  <div className="progressBar">
-                    <div className="progressFill" style={{ width: `${Math.min(100, Math.max(0, currentStatus?.progress_percent ?? 0))}%` }} />
                   </div>
                 </div>
                 <div className="card">
