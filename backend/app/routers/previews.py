@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
 
 from ..db import get_conn
@@ -44,6 +47,13 @@ def list_previews(project_id: int) -> dict:
             timeline_map[checkpoint_id] = item
         if row["slot"] is not None:
             item["samples"][row["slot"]] = row["image_path"]
+            img_path = Path(str(row["image_path"]))
+            if img_path.exists() and img_path.is_file() and img_path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}:
+                raw = img_path.read_bytes()
+                mime = "image/png" if img_path.suffix.lower() == ".png" else "image/jpeg"
+                item.setdefault("sample_previews", {})[row["slot"]] = f"data:{mime};base64," + base64.b64encode(raw).decode(
+                    "ascii"
+                )
 
     timeline = list(timeline_map.values())
     return {

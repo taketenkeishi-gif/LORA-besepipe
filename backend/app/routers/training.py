@@ -165,6 +165,14 @@ def _runner_loop(project_id: int) -> None:
 def start(payload: TrainingStartIn) -> dict:
     _ensure_project(payload.project_id)
     conn = get_conn()
+    dataset_count = conn.execute(
+        "SELECT COUNT(*) AS c FROM dataset_items WHERE project_id = ? AND selected = 1",
+        (payload.project_id,),
+    ).fetchone()["c"]
+    steps_per_epoch = max(1, int(dataset_count) * int(payload.repeats))
+    conn.close()
+
+    conn = get_conn()
     cur = conn.cursor()
     cur.execute(
         """
@@ -176,9 +184,9 @@ def start(payload: TrainingStartIn) -> dict:
         """,
         (
             payload.project_id,
-            json.dumps({"preset_id": payload.preset_id}),
-            payload.total_epochs,
-            payload.steps_per_epoch,
+            json.dumps({"preset_id": payload.preset_id, "alpha": payload.alpha, "repeats": payload.repeats}),
+            payload.epochs,
+            steps_per_epoch,
         ),
     )
     run_id = cur.lastrowid
@@ -191,8 +199,11 @@ def start(payload: TrainingStartIn) -> dict:
         "project_id": payload.project_id,
         "preset_id": payload.preset_id,
         "status": "training",
-        "total_epochs": payload.total_epochs,
-        "steps_per_epoch": payload.steps_per_epoch,
+        "total_epochs": payload.epochs,
+        "steps_per_epoch": steps_per_epoch,
+        "dataset_images": dataset_count,
+        "repeats": payload.repeats,
+        "alpha": payload.alpha,
         "message": "training started (simulated worker)",
     }
 

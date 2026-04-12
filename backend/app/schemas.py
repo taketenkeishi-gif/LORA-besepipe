@@ -33,11 +33,18 @@ class CollectorImportIn(BaseModel):
     naming_template: str = "{title}_{index}"
 
 
+class RepeatFolderIn(BaseModel):
+    project_id: int
+    repeats: int = Field(default=5, ge=1, le=1000)
+    folder_title: str = Field(default="default", min_length=1, max_length=120)
+
+
 class TrainingStartIn(BaseModel):
     project_id: int
     preset_id: int | None = None
-    total_epochs: int = Field(default=5, ge=1, le=1000)
-    steps_per_epoch: int = Field(default=20, ge=1, le=100000)
+    epochs: int = Field(default=5, ge=1, le=1000)
+    repeats: int = Field(default=5, ge=1, le=1000)
+    alpha: float = Field(default=4.0, ge=0.1, le=128.0)
 
 
 class TrainingControlIn(BaseModel):

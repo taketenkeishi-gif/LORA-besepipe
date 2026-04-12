@@ -68,7 +68,7 @@ def test_training_progress_and_previews(client):
 
     started = client.post(
         "/training/start",
-        json={"project_id": project_id, "total_epochs": 2, "steps_per_epoch": 3},
+        json={"project_id": project_id, "epochs": 2, "repeats": 2, "alpha": 4.0},
     )
     assert started.status_code == 200
 
@@ -85,6 +85,12 @@ def test_training_progress_and_previews(client):
     assert status_payload is not None
     assert status_payload["status"] == "completed"
     assert status_payload["epoch"] == 2
+
+    repeat_folder = client.post(
+        "/collector/prepare-repeat-folder",
+        json={"project_id": project_id, "repeats": 5, "folder_title": "subject"},
+    )
+    assert repeat_folder.status_code == 200
 
     previews = client.get(f"/previews/{project_id}")
     assert previews.status_code == 200

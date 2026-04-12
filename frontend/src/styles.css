@@ -311,6 +311,29 @@ label {
   color: #4c5f7a;
 }
 
+.thumbGrid4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(100px, 1fr));
+  gap: 8px;
+}
+
+.smallThumb {
+  border: 1px solid #c8d5e6;
+  border-radius: 8px;
+  padding: 6px;
+  background: #fff;
+  display: grid;
+  gap: 4px;
+}
+
+.smallThumb img {
+  width: 100%;
+  height: 90px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #d3dfeb;
+}
+
 .timeline {
   display: grid;
   gap: 8px;
@@ -385,6 +408,9 @@ label {
   }
   .formGrid {
     grid-template-columns: 1fr;
+  }
+  .thumbGrid4 {
+    grid-template-columns: repeat(2, minmax(100px, 1fr));
   }
   .row {
     flex-direction: column;

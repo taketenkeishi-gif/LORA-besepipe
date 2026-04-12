@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import re
 import shutil
+import subprocess
 from pathlib import Path
 from urllib.parse import quote, urlparse
 
@@ -10,7 +11,7 @@ from fastapi import APIRouter, HTTPException
 from PIL import Image, UnidentifiedImageError
 
 from ..db import get_conn
-from ..schemas import CollectorImportIn, CollectorScanIn
+from ..schemas import CollectorImportIn, CollectorScanIn, RepeatFolderIn
 
 router = APIRouter(prefix="/collector", tags=["collector"])
 SCAN_CACHE: dict[int, list[dict]] = {}
@@ -27,6 +28,10 @@ def _settings_value(key: str) -> str:
     row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
     conn.close()
     return str(row["value"]) if row and row["value"] else ""
+
+
+def _wd14_script_path() -> str:
+    return _settings_value("wd14_script").strip()
 
 
 def _ensure_project(project_id: int) -> dict:
@@ -137,8 +142,102 @@ def _scan_from_dataset_base(project: dict, keyword: str, limit: int) -> list[dic
                 "source_url": str(p),
                 "source_file": str(p),
                 "thumbnail_url": _make_cached_thumb(p, title, i),
+                "tags": _pretag_file(p, project["project_type"]),
             }
         )
+    return out
+
+
+def _pretag_file(path: Path, project_type: str) -> list[str]:
+    # 1) 既存のWD14タグ(txt)があれば最優先で利用
+    caption = path.with_suffix(".txt")
+    if caption.exists():
+        try:
+            raw = caption.read_text(encoding="utf-8", errors="ignore")
+            tags = [t.strip().lower() for t in raw.split(",") if t.strip()]
+            if tags:
+                return sorted(set(tags))
+        except OSError:
+            pass
+
+    # 2) 実運用ではWD14実行結果を優先。失敗時は軽量推定タグでフォールバック。
+    wd14 = _wd14_script_path()
+    if wd14 and Path(wd14).exists():
+        # ここでは高コスト実行を避けるため将来拡張ポイントとして保持
+        pass
+    tags: list[str] = []
+    name = path.stem.lower()
+    if project_type == "character":
+        tags += ["character", "solo", "portrait"]
+    else:
+        tags += ["style", "background", "composition"]
+    for k in ("face", "bust", "full", "bg", "closeup", "texture", "lineart"):
+        if k in name:
+            tags.append(k)
+    return sorted(set(tags))
+
+
+def _filter_items(items: list[dict], keyword: str, project_type: str) -> list[dict]:
+    # keyword grammar: "tag:face aspect:square minw:768 minh:768 foo"
+    tokens = [t.strip() for t in keyword.split() if t.strip()]
+    minw = 0
+    minh = 0
+    aspect: str | None = None
+    tag_terms: list[str] = []
+    text_terms: list[str] = []
+    for t in tokens:
+        low = t.lower()
+        if low.startswith("minw:"):
+            try:
+                minw = int(low.split(":", 1)[1])
+            except ValueError:
+                pass
+            continue
+        if low.startswith("minh:"):
+            try:
+                minh = int(low.split(":", 1)[1])
+            except ValueError:
+                pass
+            continue
+        if low.startswith("aspect:"):
+            aspect = low.split(":", 1)[1]
+            continue
+        if low.startswith("tag:"):
+            tag_terms.append(low.split(":", 1)[1])
+            continue
+        text_terms.append(low)
+
+    out: list[dict] = []
+    for item in items:
+        w = int(item.get("width", 0))
+        h = int(item.get("height", 0))
+        asp = str(item.get("aspect", ""))
+        tags = [str(x).lower() for x in item.get("tags", [])]
+        title = str(item.get("title", "")).lower()
+
+        if w < minw or h < minh:
+            continue
+        if aspect and asp != aspect:
+            continue
+        if tag_terms and not all(t in tags for t in tag_terms):
+            continue
+        if text_terms and not any(t in title or t in " ".join(tags) for t in text_terms):
+            continue
+
+        # タイプ最適化: characterは人物寄り、styleは背景/質感寄りを優先
+        boost = 0
+        if project_type == "character":
+            if "face" in tags or "portrait" in tags:
+                boost = 1
+        else:
+            if "background" in tags or "texture" in tags:
+                boost = 1
+        item["_boost"] = boost
+        out.append(item)
+
+    out.sort(key=lambda x: int(x.get("_boost", 0)), reverse=True)
+    for i in out:
+        i.pop("_boost", None)
     return out
 
 
@@ -148,7 +247,10 @@ def scan(payload: CollectorScanIn) -> dict:
     keyword = payload.keyword.strip()
 
     # 1) dataset_base を優先スキャン
-    dataset_items = _scan_from_dataset_base(project, keyword=keyword, limit=payload.limit)
+    dataset_items = _scan_from_dataset_base(project, keyword=keyword, limit=payload.limit * 3)
+    if dataset_items:
+        dataset_items = _filter_items(dataset_items, keyword=keyword, project_type=str(project["project_type"]))
+        dataset_items = dataset_items[: payload.limit]
     if dataset_items:
         SCAN_CACHE[payload.project_id] = dataset_items
         return {
@@ -175,8 +277,10 @@ def scan(payload: CollectorScanIn) -> dict:
                 "aspect": "square",
                 "source_url": payload.url,
                 "thumbnail_url": _thumbnail_data_uri(title, i),
+                "tags": (["character", "portrait"] if project["project_type"] == "character" else ["style", "background"]),
             }
         )
+    items = _filter_items(items, keyword=keyword, project_type=str(project["project_type"]))
     SCAN_CACHE[payload.project_id] = items
     return {
         "project_id": payload.project_id,
@@ -247,4 +351,26 @@ def import_selected(payload: CollectorImportIn) -> dict:
         "files": imported,
         "naming_template": payload.naming_template,
         "message": "dataset import completed",
+    }
+
+
+@router.post("/prepare-repeat-folder")
+def prepare_repeat_folder(payload: RepeatFolderIn) -> dict:
+    project = _ensure_project(payload.project_id)
+    dataset_dir = Path(project["dataset_dir"])
+    title = _slugify(payload.folder_title)
+    folder = dataset_dir / f"{payload.repeats}_{title}"
+    folder.mkdir(parents=True, exist_ok=True)
+
+    copied = 0
+    for src in dataset_dir.glob("*"):
+        if src.is_file() and src.suffix.lower() in IMAGE_EXTS:
+            dst = folder / src.name
+            shutil.copy2(src, dst)
+            copied += 1
+    return {
+        "project_id": payload.project_id,
+        "folder": str(folder),
+        "copied_images": copied,
+        "message": "repeat folder prepared",
     }

@@ -41,6 +41,7 @@ npm run dev
 - `start_web.bat`: ブラウザ版を起動（backend + frontend）
 - `start_desktop.bat`: デスクトップ版を起動（backend + frontend + Electron）
 - `stop_all.bat`: backend / frontend / desktop 関連プロセスを停止
+- `create_desktop_shortcut.bat`: デスクトップに非表示起動ショートカットを作成
 
 不安定な時は `stop_all.bat` 実行後に `start_web.bat` または `start_desktop.bat` を実行してください。
 起動ログは `.runtime/logs/` に出力されます。
@@ -71,7 +72,8 @@ npm run dev
 UIは以下メニューで利用できます。
 - Dashboard
 - Projects
-- Workflow
+- Dataset
+- Training
 - Integrations
 
 詳細な手順は [docs/使い方ガイド.md](docs/使い方ガイド.md) を参照してください。
