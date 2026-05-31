@@ -15,6 +15,7 @@ from ..schemas import (
     TaggerStatusOut,
 )
 from ..services import tagger as tagger_svc
+from ..services.tagger import GENERAL_THRESHOLD, CHARACTER_THRESHOLD
 
 router = APIRouter(prefix="/tags", tags=["tags"])
 
@@ -33,7 +34,14 @@ def _set_status(project_id: int, status: str, total: int, done: int, message: st
         }
 
 
-def _run_tagger(project_id: int, item_ids: list[int], overwrite: bool) -> None:
+def _run_tagger(
+    project_id: int,
+    item_ids: list[int],
+    overwrite: bool,
+    general_thresh: float = GENERAL_THRESHOLD,
+    character_thresh: float = CHARACTER_THRESHOLD,
+    remove_character_tags: bool = False,
+) -> None:
     conn = get_conn()
     rows = conn.execute(
         "SELECT id, file_path, caption FROM dataset_items WHERE project_id = ? AND selected = 1 ORDER BY id",
@@ -50,7 +58,12 @@ def _run_tagger(project_id: int, item_ids: list[int], overwrite: bool) -> None:
     errors: list[str] = []
     for i, row in enumerate(targets, start=1):
         try:
-            caption = tagger_svc.predict(row["file_path"])
+            caption = tagger_svc.predict(
+                row["file_path"],
+                general_thresh=general_thresh,
+                character_thresh=character_thresh,
+                remove_character_tags=remove_character_tags,
+            )
             conn.execute(
                 "UPDATE dataset_items SET caption = ?, caption_source = 'wd14' WHERE id = ?",
                 (caption, row["id"]),
@@ -97,7 +110,15 @@ def generate_tags(payload: GenerateTagsIn, background_tasks: BackgroundTasks) ->
             raise HTTPException(status_code=409, detail="タグ生成が既に実行中です")
 
     _set_status(payload.project_id, "queued", 0, 0, "モデルをロード中...")
-    background_tasks.add_task(_run_tagger, payload.project_id, [], payload.overwrite)
+    background_tasks.add_task(
+        _run_tagger,
+        payload.project_id,
+        [],
+        payload.overwrite,
+        payload.general_thresh,
+        payload.character_thresh,
+        payload.remove_character_tags,
+    )
 
     return {
         "project_id": payload.project_id,
@@ -193,6 +214,21 @@ def edit_caption(item_id: int, payload: CaptionEditIn) -> dict:
         pass
 
     return {"id": item_id, "caption": caption, "caption_source": "manual"}
+
+
+@router.delete("/item/{item_id}")
+def delete_item(item_id: int) -> dict:
+    """データセットからアイテムを削除（ファイルは残す）"""
+    conn = get_conn()
+    row = conn.execute("SELECT id, project_id FROM dataset_items WHERE id = ?", (item_id,)).fetchone()
+    if row is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail=f"item not found: {item_id}")
+    project_id = row["project_id"]
+    conn.execute("DELETE FROM dataset_items WHERE id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+    return {"deleted": item_id, "project_id": project_id}
 
 
 @router.post("/batch-replace")

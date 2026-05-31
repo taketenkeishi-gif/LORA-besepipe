@@ -65,6 +65,7 @@ export type ToolPaths = {
   wd14_script: string;
   temp_dir: string;
   dataset_base_dir: string;
+  pixiv_session: string;
 };
 
 export type IntegrationStatus = {
@@ -307,4 +308,73 @@ export type ResourceStats = {
   ram_pct: number;
   gpu: GpuInfo[];
   gpu_available: boolean;
+};
+
+export type SuggestedImage = {
+  source: "pixiv" | "bing" | "google" | "duckduckgo" | "pinterest" | string;
+  id: string;
+  title: string;
+  url: string;
+  user?: string;
+  width?: number;
+  height?: number;
+  like_count?: number;
+  view_count?: number;
+  score?: number;
+  clip_similarity?: number;
+  user_selected?: boolean;
+  llm_evaluation?: { score: number; reason?: string };
+};
+
+export type SuggestionsResult = {
+  project_id: number;
+  status: "completed" | "running" | "failed";
+  timestamp?: string;
+  results: SuggestedImage[];
+  total_count?: number;
+  evaluation_mode?: string;
+  feedback_round?: number;
+  source_breakdown?: {
+    pixiv: number;
+    bing?: number;
+    duckduckgo?: number;
+    google: number;
+    pinterest: number;
+  };
+  error?: string;
+};
+
+export type SuggestionFeedbackPayload = {
+  accepted_urls: string[];
+  rejected_urls: string[];
+  evaluation_mode: "fast" | "balanced" | "accurate";
+};
+
+// ── Pixiv R18 Authentication ──────────────────────────────────────────────
+
+export type PixivSessionStatus = {
+  is_logged_in: boolean;
+  is_valid: boolean;
+  user_id: string | null;
+  user_name: string | null;
+  expires_at: string | null;
+  last_validated: string | null;
+  auto_refresh_interval: string;
+  message: string;
+};
+
+export type PixivLoginStartResult = {
+  success: boolean;
+  session_id: string | null;
+  popup_url: string | null;
+  already_logged_in?: boolean;
+  user_id?: string;
+  user_name?: string;
+  message: string;
+};
+
+export type PixivRefreshResult = {
+  success: boolean;
+  refreshed: boolean;
+  message: string;
 };

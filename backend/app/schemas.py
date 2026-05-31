@@ -83,6 +83,9 @@ class TrainingControlIn(BaseModel):
 class GenerateTagsIn(BaseModel):
     project_id: int
     overwrite: bool = False
+    general_thresh: float = Field(default=0.35, ge=0.05, le=0.95)
+    character_thresh: float = Field(default=0.85, ge=0.05, le=0.99)
+    remove_character_tags: bool = False
 
 
 class CaptionItem(BaseModel):
@@ -137,6 +140,7 @@ class ToolPathsIn(BaseModel):
     wd14_script: str = ""
     temp_dir: str = ""
     dataset_base_dir: str = ""
+    pixiv_session: str = ""
 
 
 class ToolPathsOut(BaseModel):
@@ -146,6 +150,7 @@ class ToolPathsOut(BaseModel):
     wd14_script: str
     temp_dir: str
     dataset_base_dir: str
+    pixiv_session: str = ""
 
 
 class PreviewPromptsIn(BaseModel):

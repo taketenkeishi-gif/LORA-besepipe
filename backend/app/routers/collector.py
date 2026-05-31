@@ -18,6 +18,7 @@ from PIL import Image, UnidentifiedImageError
 
 from ..db import get_conn
 from ..schemas import CandidateRemoveIn, CollectorImportIn, CollectorScanIn, DropUrlIn, RepeatFolderIn
+from ..services.browser_scraper import scrape_images_from_url, is_playwright_available, detect_search_query
 
 router = APIRouter(prefix="/collector", tags=["collector"])
 SCAN_CACHE: dict[int, list[dict]] = {}
@@ -172,6 +173,7 @@ def _fetch_url_bytes(
     url: str,
     referer: str | None = None,
     retries: int = 2,
+    extra_headers: dict | None = None,
 ) -> tuple[bytes, str]:
     headers = {
         "User-Agent": _BROWSER_UA,
@@ -180,6 +182,8 @@ def _fetch_url_bytes(
     }
     if referer:
         headers["Referer"] = referer
+    if extra_headers:
+        headers.update(extra_headers)
 
     last_exc: Exception = RuntimeError("fetch failed")
     for attempt in range(max(1, retries)):
@@ -204,6 +208,29 @@ def _save_downloaded_image(project_id: int, raw: bytes, title_seed: str, i: int)
     dst = _drop_cache_dir(project_id) / f"url_{i}_{safe}{ext}"
     dst.write_bytes(raw)
     return dst
+
+
+def _build_items_from_urls(project: dict, project_id: int, img_urls: list[str], limit: int) -> list[dict]:
+    """URLリストから画像をダウンロードしてアイテムリストに変換"""
+    out: list[dict] = []
+    for i, img_url in enumerate(img_urls, start=1):
+        if len(out) >= limit:
+            break
+        try:
+            img_raw, img_type = _fetch_url_bytes(img_url)
+            kind = _detect_image_format(img_raw)
+            if not kind and "image/" not in img_type:
+                continue
+            stem = Path(urlparse(img_url).path).stem or f"image_{i}"
+            local = _save_downloaded_image(project_id, img_raw, stem, i)
+            item = _append_candidate_from_file(project, project_id, local, stem, i)
+            item["source_url"] = img_url
+            if _is_non_dataset_like_image(item):
+                continue
+            out.append(item)
+        except Exception:
+            continue
+    return out
 
 
 def _scan_from_url_live(project: dict, project_id: int, url: str, limit: int) -> list[dict]:
@@ -259,55 +286,100 @@ def _extract_pixiv_artwork_id(url: str) -> str:
     return m.group(1) if m else ""
 
 
+_PIXIV_IMG_REFERER = "https://www.pixiv.net/"
+
+
+def _pixiv_cookie() -> str:
+    """設定に PHPSESSID があれば付与してR-18コンテンツにアクセスできるようにする。"""
+    session = _settings_value("pixiv_session").strip()
+    if session:
+        return f"PHPSESSID={session}; R18=1; age_confirmation=1"
+    return "R18=1; age_confirmation=1"
+
+
+def _pixiv_api_headers() -> dict:
+    return {
+        "User-Agent": _BROWSER_UA,
+        "Referer": "https://www.pixiv.net/",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "ja,en-US;q=0.7,en;q=0.3",
+        "x-requested-with": "XMLHttpRequest",
+        "Cookie": _pixiv_cookie(),
+    }
+
+
 def _scan_from_pixiv_artwork(project: dict, project_id: int, artwork_url: str, limit: int) -> list[dict]:
     artwork_id = _extract_pixiv_artwork_id(artwork_url)
     if not artwork_id:
         return []
 
-    ajax_url = f"https://www.pixiv.net/ajax/illust/{artwork_id}/pages?lang=ja"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36",
-        "Referer": artwork_url,
-        "Accept": "application/json, text/plain, */*",
-    }
-    try:
-        req = Request(ajax_url, headers=headers)
-        with urlopen(req, timeout=20) as resp:
-            raw = resp.read()
-    except Exception:
-        return []
-
-    try:
-        payload = json.loads(raw.decode("utf-8", errors="ignore"))
-    except Exception:
-        return []
-
-    body = payload.get("body")
-    if not isinstance(body, list):
-        return []
-
     image_urls: list[str] = []
-    for page in body:
-        if not isinstance(page, dict):
-            continue
-        urls = page.get("urls")
-        if not isinstance(urls, dict):
-            continue
-        candidate = (
-            urls.get("original")
-            or urls.get("regular")
-            or urls.get("small")
-            or urls.get("thumb_mini")
-        )
-        if isinstance(candidate, str) and candidate and candidate not in image_urls:
-            image_urls.append(candidate)
-        if len(image_urls) >= limit:
-            break
+    pixiv_error: str = ""
 
+    # Step 1: pages API — returns all pages of a manga/illustration
+    try:
+        req = Request(
+            f"https://www.pixiv.net/ajax/illust/{artwork_id}/pages?lang=ja",
+            headers=_pixiv_api_headers(),
+        )
+        with urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+        body = data.get("body")
+        if isinstance(body, list):
+            for page in body:
+                urls = page.get("urls", {}) if isinstance(page, dict) else {}
+                # regular (≤1200px) works without cookies; original requires auth for some works
+                candidate = (
+                    urls.get("regular")
+                    or urls.get("original")
+                    or urls.get("small")
+                    or urls.get("thumb_mini")
+                )
+                if isinstance(candidate, str) and candidate and candidate not in image_urls:
+                    image_urls.append(candidate)
+                if len(image_urls) >= limit:
+                    break
+        elif data.get("error"):
+            pixiv_error = str(data.get("message", ""))
+    except HTTPError as exc:
+        if exc.code == 404:
+            pixiv_error = "not_found"
+        elif exc.code == 403:
+            pixiv_error = "forbidden"
+    except Exception:
+        pass
+
+    # Step 2: illust API fallback — returns a single preview URL
+    if not image_urls and pixiv_error != "not_found":
+        try:
+            req = Request(
+                f"https://www.pixiv.net/ajax/illust/{artwork_id}?lang=ja",
+                headers=_pixiv_api_headers(),
+            )
+            with urlopen(req, timeout=20) as resp:
+                data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+            body = data.get("body", {})
+            if isinstance(body, dict):
+                urls = body.get("urls", {})
+                candidate = (
+                    urls.get("regular")
+                    or urls.get("small")
+                    or urls.get("thumb")
+                    or urls.get("mini")
+                )
+                if isinstance(candidate, str) and candidate:
+                    image_urls.append(candidate)
+        except Exception:
+            pass
+
+    if not image_urls:
+        return []
+
+    _pixiv_img_extra = {"Cookie": _pixiv_cookie()}
     out: list[dict] = []
     for i, img_url in enumerate(image_urls, start=1):
         try:
-            img_raw, img_type = _fetch_url_bytes(img_url, referer=artwork_url)
+            img_raw, img_type = _fetch_url_bytes(img_url, referer=_PIXIV_IMG_REFERER, extra_headers=_pixiv_img_extra)
             kind = _detect_image_format(img_raw)
             if not kind and "image/" not in img_type:
                 continue
@@ -524,7 +596,7 @@ def _filter_items(items: list[dict], keyword: str, project_type: str) -> list[di
 
 
 @router.post("/scan")
-def scan(payload: CollectorScanIn) -> dict:
+async def scan(payload: CollectorScanIn) -> dict:
     project = _ensure_project(payload.project_id)
     keyword = payload.keyword.strip()
     url = payload.url.strip()
@@ -533,6 +605,18 @@ def scan(payload: CollectorScanIn) -> dict:
     # 1) URLがあるときはURL由来を最優先
     if has_url:
         live_items = _scan_from_url_live(project, payload.project_id, url, limit=payload.limit)
+
+        # 通常取得が失敗した場合 Playwright でフォールバック（Google/Bing検索URLなど）
+        if not live_items and is_playwright_available():
+            try:
+                scraped_urls = await scrape_images_from_url(url, limit=payload.limit * 2)
+                if scraped_urls:
+                    live_items = _build_items_from_urls(
+                        project, payload.project_id, scraped_urls, limit=payload.limit
+                    )
+            except Exception:
+                pass
+
         if live_items:
             live_items = _filter_items(live_items, keyword=keyword, project_type=str(project["project_type"]))
             live_items = live_items[: payload.limit]
@@ -548,13 +632,18 @@ def scan(payload: CollectorScanIn) -> dict:
             }
         # URL指定時に無関係なdataset_base結果を混ぜない
         SCAN_CACHE[payload.project_id] = []
+        playwright_hint = "" if is_playwright_available() else " (Playwright未インストール: pip install playwright && playwright install chromium)"
+        if PIXIV_ARTWORK_RE.search(url):
+            fail_msg = "Pixiv作品を取得できませんでした。作品が削除済み・非公開・R-18の可能性があります。別のPixiv URLを試してください。"
+        else:
+            fail_msg = f"URLから画像を取得できませんでした。画像URLを直接指定するか、D&Dで追加してください。{playwright_hint}"
         return {
             "project_id": payload.project_id,
             "url": url,
             "mode": "url_unavailable",
             "detected": 0,
             "items": [],
-            "message": "URLから画像を取得できませんでした。画像URLを直接指定するか、D&Dで追加してください。",
+            "message": fail_msg,
         }
 
     # 2) URL未指定時はdataset_baseを探索
@@ -789,6 +878,29 @@ def _drop_url_impl(payload: DropUrlIn) -> dict:
         "added_count": 1,
         "items": SCAN_CACHE[payload.project_id],
         "message": "dropped URL image added to candidates",
+    }
+
+
+@router.post("/add-from-urls")
+async def add_from_urls(payload: dict) -> dict:
+    """Chrome拡張機能などから複数URLを一括追加するエンドポイント"""
+    project_id = int(payload.get("project_id", 0))
+    urls: list[str] = payload.get("urls", [])
+    if not project_id or not urls:
+        raise HTTPException(status_code=422, detail="project_id and urls required")
+    project = _ensure_project(project_id)
+    items = _build_items_from_urls(project, project_id, urls, limit=len(urls))
+    if items:
+        existing = SCAN_CACHE.get(project_id, [])
+        max_id = max((x["id"] for x in existing), default=0)
+        for i, item in enumerate(items, start=1):
+            item["id"] = max_id + i
+        merged = existing + items
+        SCAN_CACHE[project_id] = merged
+    return {
+        "project_id": project_id,
+        "added": len(items),
+        "items": SCAN_CACHE.get(project_id, []),
     }
 
 

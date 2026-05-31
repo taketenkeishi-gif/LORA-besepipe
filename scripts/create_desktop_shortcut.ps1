@@ -1,4 +1,4 @@
-param()
+﻿param()
 
 $ErrorActionPreference = "Stop"
 
@@ -28,3 +28,4 @@ $shortcut.Description = "LoRA制作ワークベンチ (Desktop)"
 $shortcut.Save()
 
 Write-Host "[ok] desktop shortcut created: $shortcutPath"
+

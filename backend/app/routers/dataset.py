@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from PIL import Image, UnidentifiedImageError
@@ -19,6 +22,7 @@ from ..services.tag_categories import (
     detect_dominant_feature,
 )
 from ..services.tagger import CACHE_DIR, TAGS_FILENAME
+from ..services.image_search import ImageSearchService
 
 router = APIRouter(prefix="/dataset", tags=["dataset"])
 
@@ -659,3 +663,361 @@ def get_distribution(project_id: int) -> dict:
         "eye_color": _count_distribution(captioned, EYE_COLORS),
         "costume": _count_distribution(captioned, COSTUME_TYPES),
     }
+
+
+# ── 自動提案機能 ──────────────────────────────────────────
+_SUGGESTION_STATUS: dict[int, dict] = {}
+_CANCEL_FLAGS: dict[int, bool] = {}
+
+
+@router.post("/suggest-cancel/{project_id}")
+async def suggest_cancel(project_id: int):
+    """実行中の提案処理をキャンセル"""
+    _CANCEL_FLAGS[project_id] = True
+    _set_suggestion_status(project_id, "cancelled", "停止しました", step=0)
+    return {"status": "cancelled"}
+
+
+@router.post("/suggest-images/{project_id}")
+async def suggest_images(project_id: int, background_tasks: BackgroundTasks, payload: dict = {}):
+    """複数ソースから類似画像を自動提案＆LLM評価
+
+    payload.evaluation_mode: "fast" | "balanced" | "accurate"
+    payload.manual_query: Booruタグを手動指定（空文字列なら自動抽出）
+    """
+    evaluation_mode = payload.get("evaluation_mode", "balanced") if payload else "balanced"
+    if evaluation_mode not in ("fast", "balanced", "accurate"):
+        evaluation_mode = "balanced"
+    manual_query = (payload.get("manual_query", "") or "").strip() if payload else ""
+
+    conn = get_conn()
+    try:
+        project = conn.execute(
+            "SELECT id, name FROM projects WHERE id = ?",
+            (project_id,)
+        ).fetchone()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        items = conn.execute(
+            "SELECT file_path FROM dataset_items WHERE project_id = ?",
+            (project_id,)
+        ).fetchall()
+
+        if not items:
+            raise HTTPException(status_code=400, detail="No images in dataset")
+
+        image_paths = [item[0] for item in items if Path(item[0]).exists()]
+
+        if not image_paths:
+            raise HTTPException(status_code=400, detail="No valid image paths")
+
+        mode_label = {"fast": "高速（人気度のみ）", "balanced": "バランス（軽量LLM）", "accurate": "高精度（Qwen2.5VL）"}
+        _SUGGESTION_STATUS[project_id] = {
+            "status": "running",
+            "message": f"検索開始 [{mode_label.get(evaluation_mode, evaluation_mode)}]"
+                       + (f" クエリ: {manual_query}" if manual_query else ""),
+            "evaluation_mode": evaluation_mode,
+        }
+
+        background_tasks.add_task(
+            _run_suggestion,
+            project_id,
+            image_paths,
+            evaluation_mode,
+            manual_query,
+        )
+
+        return {"status": "queued", "message": "提案検索を開始しました", "evaluation_mode": evaluation_mode}
+
+    finally:
+        conn.close()
+
+
+@router.get("/suggest-status/{project_id}")
+async def suggest_status(project_id: int):
+    """提案検索の進捗確認"""
+    status = _SUGGESTION_STATUS.get(project_id, {"status": "idle", "message": "実行待機中"})
+    return status
+
+
+@router.get("/suggestions/{project_id}")
+async def get_suggestions(project_id: int):
+    """提案結果取得"""
+    conn = get_conn()
+    try:
+        suggestions = conn.execute(
+            "SELECT suggestions_json FROM dataset_suggestions WHERE project_id = ? ORDER BY created_at DESC LIMIT 1",
+            (project_id,)
+        ).fetchone()
+
+        if not suggestions:
+            return {"project_id": project_id, "results": [], "message": "提案結果なし"}
+
+        return json.loads(suggestions[0])
+
+    finally:
+        conn.close()
+
+
+def _set_suggestion_status(project_id: int, status: str, message: str, step: int = 0, total_steps: int = 4) -> None:
+    _SUGGESTION_STATUS[project_id] = {
+        "status": status,
+        "message": message,
+        "step": step,
+        "total_steps": total_steps,
+    }
+
+
+def _run_suggestion(project_id: int, image_paths: list, evaluation_mode: str = "balanced", manual_query: str = "") -> None:
+    """バックグラウンド提案処理（複数ソース並列・LLM評価）"""
+    import asyncio
+    from datetime import datetime
+
+    mode_label = {
+        "fast": "高速（人気度のみ）",
+        "balanced": "バランス（軽量LLM・3B）",
+        "accurate": "高精度（画像解析・32B）"
+    }
+
+    async def _run_async() -> dict:
+        # Step 1: キャプション / タグ取得
+        _set_suggestion_status(project_id, "running", "キャプション読込中...", step=1)
+        conn = get_conn()
+        captions = conn.execute(
+            "SELECT caption FROM dataset_items WHERE project_id = ? AND caption != ''",
+            (project_id,)
+        ).fetchall()
+        conn.close()
+
+        # 全キャプションを結合してより多様なキャラ情報を渡す
+        search_query = ""
+        if captions:
+            first_caption = (captions[0][0] or "").strip()
+            if first_caption:
+                search_query = first_caption[:100]
+
+        if _CANCEL_FLAGS.get(project_id):
+            return {"project_id": project_id, "status": "cancelled", "results": [], "total_count": 0}
+
+        # Step 2: 広域検索 → CLIP視覚類似度でランキング
+        _set_suggestion_status(
+            project_id, "running",
+            f"CLIP視覚類似度で検索中... [{mode_label.get(evaluation_mode)}]",
+            step=2
+        )
+
+        result = await ImageSearchService.suggest_images(
+            project_id=project_id,
+            current_image_paths=image_paths,
+            tags=search_query,
+            limit=30,
+            min_width=0,
+            evaluation_mode=evaluation_mode,
+            manual_query=manual_query,
+        )
+
+        if result.get("status") != "completed":
+            raise Exception(result.get("error", "Unknown error"))
+
+        # Step 3: 進捗表示
+        num_results = len(result.get("results", []))
+        _set_suggestion_status(
+            project_id, "running",
+            f"品質評価中... ({num_results}件)",
+            step=3
+        )
+
+        # Step 4: 結果保存
+        _set_suggestion_status(project_id, "running", "結果を保存中...", step=4)
+
+        return result
+
+    try:
+        _CANCEL_FLAGS[project_id] = False
+        _set_suggestion_status(project_id, "running", "処理を開始中...", step=0)
+        result = asyncio.run(_run_async())
+
+        conn = get_conn()
+        conn.execute(
+            "INSERT INTO dataset_suggestions (project_id, suggestions_json, created_at) VALUES (?, ?, datetime('now'))",
+            (project_id, json.dumps(result))
+        )
+        conn.commit()
+        conn.close()
+
+        num_results = len(result.get("results", []))
+        _set_suggestion_status(
+            project_id, "done",
+            f"{num_results} 件の提案画像を見つけました（複数ソース・LLM評価）",
+            step=4,
+        )
+        logger.info(f"Suggestion completed: {num_results} images, breakdown: {result.get('source_breakdown')}")
+
+    except Exception as e:
+        logger.error(f"_run_suggestion failed: {e}", exc_info=True)
+        _set_suggestion_status(project_id, "failed", f"提案検索失敗: {str(e)}", step=0)
+
+
+_FEEDBACK_STATUS: dict[int, dict] = {}
+
+
+@router.post("/suggest-feedback/{project_id}")
+async def suggest_feedback(project_id: int, background_tasks: BackgroundTasks, payload: dict = {}):
+    """フィードバック（✅/❌）で候補を再ランク＆追加提案
+
+    payload:
+      accepted_urls:   List[str]  — 気に入った画像のURL
+      rejected_urls:   List[str]  — 不要な画像のURL
+      evaluation_mode: str        — fast / balanced / accurate
+    """
+    accepted_urls = (payload or {}).get("accepted_urls", [])
+    rejected_urls = (payload or {}).get("rejected_urls", [])
+    evaluation_mode = (payload or {}).get("evaluation_mode", "balanced")
+    if evaluation_mode not in ("fast", "balanced", "accurate"):
+        evaluation_mode = "balanced"
+
+    conn = get_conn()
+    try:
+        project = conn.execute("SELECT id FROM projects WHERE id = ?", (project_id,)).fetchone()
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        # 現在の提案結果を取得
+        row = conn.execute(
+            "SELECT suggestions_json FROM dataset_suggestions WHERE project_id = ? ORDER BY created_at DESC LIMIT 1",
+            (project_id,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=400, detail="提案結果がありません。先に提案を実行してください。")
+
+        current_suggestions = json.loads(row[0])
+
+        items = conn.execute(
+            "SELECT file_path FROM dataset_items WHERE project_id = ?",
+            (project_id,)
+        ).fetchall()
+        image_paths = [item[0] for item in items if Path(item[0]).exists()]
+
+    finally:
+        conn.close()
+
+    _FEEDBACK_STATUS[project_id] = {"status": "running", "message": "フィードバック処理中...", "step": 1}
+
+    background_tasks.add_task(
+        _run_feedback,
+        project_id,
+        current_suggestions,
+        accepted_urls,
+        rejected_urls,
+        image_paths,
+        evaluation_mode,
+    )
+
+    return {"status": "queued", "message": "フィードバックを受け付けました"}
+
+
+@router.get("/suggest-feedback-status/{project_id}")
+async def suggest_feedback_status(project_id: int):
+    """フィードバック再検索の進捗"""
+    return _FEEDBACK_STATUS.get(project_id, {"status": "idle", "message": "待機中"})
+
+
+def _run_feedback(
+    project_id: int,
+    current_suggestions: dict,
+    accepted_urls: list,
+    rejected_urls: list,
+    image_paths: list,
+    evaluation_mode: str,
+) -> None:
+    """バックグラウンド: CLIP再ランク + accepted 類似語で追加検索"""
+    import asyncio
+    from datetime import datetime
+
+    async def _async() -> dict:
+        # Step 1: 既存候補を CLIP でリランク
+        _FEEDBACK_STATUS[project_id] = {"status": "running", "message": "CLIPで類似度を計算中...", "step": 1}
+        current_candidates = current_suggestions.get("results", [])
+
+        reranked = await ImageSearchService.rerank_by_feedback(
+            accepted_urls=accepted_urls,
+            rejected_urls=rejected_urls,
+            candidates=current_candidates,
+            evaluation_mode=evaluation_mode,
+        )
+
+        # Step 2: accepted があれば追加でも検索
+        extra: list[dict] = []
+        if accepted_urls:
+            _FEEDBACK_STATUS[project_id] = {"status": "running", "message": "accepted画像で追加検索中...", "step": 2}
+
+            # accepted のタイトル/タグをキーワードに使う
+            accepted_set = set(accepted_urls)
+            accepted_items = [c for c in current_candidates if c.get('url') in accepted_set]
+            titles = [c.get('title', '') for c in accepted_items if c.get('title')]
+            extra_query = " ".join(titles[:3]) if titles else "anime girl character illustration"
+
+            # 新しい候補を並列取得
+            extra = await ImageSearchService.suggest_images(
+                project_id=project_id,
+                current_image_paths=image_paths,
+                tags=extra_query,
+                limit=20,
+                min_width=512,
+                evaluation_mode=evaluation_mode,
+            )
+            extra = extra.get("results", [])
+
+        # Step 3: マージ（accepted は最優先、extra を追加、重複排除）
+        _FEEDBACK_STATUS[project_id] = {"status": "running", "message": "結果をまとめています...", "step": 3}
+
+        seen_urls = {r.get('url') for r in reranked}
+        for e in extra:
+            if e.get('url') not in seen_urls:
+                reranked.append(e)
+                seen_urls.add(e.get('url'))
+
+        # accepted に +20 ボーナス（選んだ画像を上位固定）
+        accepted_set_2 = set(accepted_urls)
+        for r in reranked:
+            if r.get('url') in accepted_set_2:
+                r['score'] = round(r.get('score', 50) + 20, 1)
+                r['user_selected'] = True
+
+        reranked.sort(key=lambda x: x.get('score', 0), reverse=True)
+
+        source_breakdown: dict[str, int] = {}
+        for source in ['bing', 'pixiv', 'duckduckgo', 'google', 'pinterest']:
+            source_breakdown[source] = len([r for r in reranked if r.get("source") == source])
+
+        return {
+            "project_id": project_id,
+            "status": "completed",
+            "timestamp": datetime.now().isoformat(),
+            "results": reranked[:40],  # フィードバック後は最大40件まで表示
+            "total_count": len(reranked),
+            "source_breakdown": source_breakdown,
+            "feedback_round": current_suggestions.get("feedback_round", 0) + 1,
+        }
+
+    try:
+        result = asyncio.run(_async())
+
+        conn = get_conn()
+        conn.execute(
+            "INSERT INTO dataset_suggestions (project_id, suggestions_json, created_at) VALUES (?, ?, datetime('now'))",
+            (project_id, json.dumps(result))
+        )
+        conn.commit()
+        conn.close()
+
+        _FEEDBACK_STATUS[project_id] = {
+            "status": "done",
+            "message": f"{len(result.get('results', []))} 件に更新されました（第 {result.get('feedback_round', 1)} ラウンド）",
+            "step": 4,
+            "result": result,
+        }
+    except Exception as e:
+        logger.error(f"_run_feedback failed: {e}", exc_info=True)
+        _FEEDBACK_STATUS[project_id] = {"status": "failed", "message": f"失敗: {str(e)}", "step": 0}

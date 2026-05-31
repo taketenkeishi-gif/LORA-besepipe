@@ -33,6 +33,7 @@ export default function App() {
     wd14_script: "",
     temp_dir: "",
     dataset_base_dir: "",
+    pixiv_session: "",
   });
   const [integrationStatus, setIntegrationStatus] =
     useState<IntegrationStatus | null>(null);

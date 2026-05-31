@@ -117,6 +117,14 @@ def init_db() -> None:
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(project_id) REFERENCES projects(id)
         );
+
+        CREATE TABLE IF NOT EXISTS dataset_suggestions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            suggestions_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(project_id) REFERENCES projects(id)
+        );
         """
     )
     _ensure_column(cur, "training_runs", "current_epoch", "INTEGER NOT NULL DEFAULT 0")
@@ -129,6 +137,10 @@ def init_db() -> None:
     _ensure_column(cur, "projects", "library_dir", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(cur, "dataset_items", "caption", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(cur, "dataset_items", "caption_source", "TEXT NOT NULL DEFAULT ''")
+
+    # Initialize Pixiv session settings if not present
+    _init_pixiv_settings(cur)
+
     conn.commit()
     conn.close()
 
@@ -138,3 +150,19 @@ def _ensure_column(cur: sqlite3.Cursor, table: str, column: str, ddl: str) -> No
     names = {row[1] for row in columns}
     if column not in names:
         cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
+
+def _init_pixiv_settings(cur: sqlite3.Cursor) -> None:
+    """Initialize Pixiv session settings if not already present."""
+    pixiv_keys = [
+        "pixiv_session_expires_at",
+        "pixiv_session_last_validated",
+        "pixiv_session_user_id"
+    ]
+    for key in pixiv_keys:
+        row = cur.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+        if not row:
+            cur.execute(
+                "INSERT INTO app_settings(key, value) VALUES (?, ?)",
+                (key, "")
+            )

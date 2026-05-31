@@ -26,11 +26,13 @@ export async function apiPost<T>(
   path: string,
   body: unknown,
   method: "POST" | "PUT" | "PATCH" = "POST",
+  signal?: AbortSignal,
 ): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal,
   });
   const json = (await res.json().catch(() => ({}))) as Record<string, string>;
   if (!res.ok)

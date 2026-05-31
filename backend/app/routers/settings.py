@@ -1,17 +1,34 @@
 from __future__ import annotations
 
+import logging
 import shutil
 import subprocess
+import uuid
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import HTMLResponse
 
 from ..db import get_conn
 from ..schemas import PreviewPromptsIn, PreviewPromptsOut, ToolPathsIn, ToolPathsOut
+from playwright.async_api import async_playwright
+
+from ..services.pixiv_auth import (
+    PixivBrowserSession,
+    BROWSER_SESSIONS,
+    validate_session,
+    _save_session_to_db,
+    _extract_phpsessid_from_cookies,
+    _PIXIV_PROFILE_DIR,
+    _BROWSER_UA,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
-SETTINGS_KEYS = ("python_exe", "kohya_root", "comfyui_root", "wd14_script", "temp_dir", "dataset_base_dir")
+SETTINGS_KEYS = ("python_exe", "kohya_root", "comfyui_root", "wd14_script", "temp_dir", "dataset_base_dir", "pixiv_session")
 PROMPT_KEYS = ("positive_prompt", "negative_prompt")
 
 
@@ -232,3 +249,369 @@ def get_preview_prompts() -> PreviewPromptsOut:
 def update_preview_prompts(payload: PreviewPromptsIn) -> PreviewPromptsOut:
     _write_prompts(payload.model_dump())
     return PreviewPromptsOut(**_read_prompts())
+
+
+# Pixiv Authentication Endpoints
+
+
+async def _check_profile_cookie() -> dict | None:
+    """
+    Silently re-launch persistent profile to check for saved PHPSESSID.
+    Called after user manually closes the Playwright browser.
+    """
+    pw = None
+    ctx = None
+    try:
+        pw = await async_playwright().start()
+        ctx = await pw.chromium.launch_persistent_context(
+            user_data_dir=str(_PIXIV_PROFILE_DIR),
+            headless=True,
+            args=["--disable-blink-features=AutomationControlled"],
+            user_agent=_BROWSER_UA,
+        )
+        cookies = await ctx.cookies(["https://www.pixiv.net", "https://pixiv.net"])
+        phpsessid = _extract_phpsessid_from_cookies(cookies)
+        if phpsessid:
+            result = await validate_session(phpsessid)
+            user_id = result.get("user_id") or "unknown"
+            expires_at = (datetime.now() + timedelta(days=30)).isoformat()
+            _save_session_to_db(phpsessid, user_id, expires_at)
+            return {"phpsessid": phpsessid, "user_id": user_id}
+        return None
+    except Exception as e:
+        logger.warning(f"_check_profile_cookie error: {e}")
+        return None
+    finally:
+        if ctx:
+            try:
+                await ctx.close()
+            except Exception:
+                pass
+        if pw:
+            try:
+                await pw.stop()
+            except Exception:
+                pass
+
+
+def _load_pixiv_session_from_db() -> dict:
+    """Load Pixiv session data from database."""
+    conn = get_conn()
+    try:
+        phpsessid = conn.execute(
+            "SELECT value FROM app_settings WHERE key = ?",
+            ("pixiv_session",)
+        ).fetchone()
+        expires_at = conn.execute(
+            "SELECT value FROM app_settings WHERE key = ?",
+            ("pixiv_session_expires_at",)
+        ).fetchone()
+        user_id = conn.execute(
+            "SELECT value FROM app_settings WHERE key = ?",
+            ("pixiv_session_user_id",)
+        ).fetchone()
+        last_validated = conn.execute(
+            "SELECT value FROM app_settings WHERE key = ?",
+            ("pixiv_session_last_validated",)
+        ).fetchone()
+    finally:
+        conn.close()
+
+    return {
+        "phpsessid": (phpsessid["value"] if phpsessid and phpsessid["value"] else None),
+        "expires_at": (expires_at["value"] if expires_at and expires_at["value"] else None),
+        "user_id": (user_id["value"] if user_id and user_id["value"] else None),
+        "last_validated": (last_validated["value"] if last_validated and last_validated["value"] else None),
+    }
+
+
+def _save_pixiv_session_to_db(phpsessid: str, user_id: str, expires_at: str) -> bool:
+    """Save Pixiv session to database."""
+    conn = get_conn()
+    cur = conn.cursor()
+    now = datetime.now().isoformat()
+
+    try:
+        for key, value in [
+            ("pixiv_session", phpsessid),
+            ("pixiv_session_user_id", user_id),
+            ("pixiv_session_expires_at", expires_at),
+            ("pixiv_session_last_validated", now),
+        ]:
+            cur.execute(
+                """
+                INSERT INTO app_settings(key, value, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
+                """,
+                (key, value, now, value, now)
+            )
+        conn.commit()
+        logger.info(f"Pixiv session saved for user {user_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save Pixiv session: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+@router.post("/pixiv/login-start")
+async def pixiv_login_start() -> dict:
+    """
+    Start Pixiv login flow as a background task.
+    Opens Playwright browser; frontend polls /status every 30s to detect completion.
+    """
+    import asyncio
+
+    session_id = str(uuid.uuid4())
+    browser_session = PixivBrowserSession(session_id)
+    BROWSER_SESSIONS[session_id] = browser_session
+
+    async def _run_login():
+        result = await browser_session.start_browser_for_login()
+        if not result["success"]:
+            logger.error(f"Browser start failed: {result['error']}")
+            BROWSER_SESSIONS.pop(session_id, None)
+            return
+
+        # Already have a valid saved cookie — save and done
+        if result.get("already_logged_in") and result.get("login_result"):
+            lr = result["login_result"]
+            _save_pixiv_session_to_db(lr["phpsessid"], lr["user_id"], lr["expires_at"])
+            logger.info(f"Auto-authenticated user {lr['user_id']} from saved profile")
+            BROWSER_SESSIONS.pop(session_id, None)
+            return
+
+        # Wait for user to log in (cookie is saved to DB inside wait_for_login)
+        login_result = await browser_session.wait_for_login()
+        await browser_session.close()
+        BROWSER_SESSIONS.pop(session_id, None)
+
+        if login_result["success"]:
+            logger.info(f"Login complete, user {login_result['user_id']} saved to DB")
+        elif login_result.get("error") == "browser_closed":
+            # User closed browser manually — silently re-check profile for saved cookie
+            logger.info("Browser closed; checking saved profile for cookie...")
+            saved = await _check_profile_cookie()
+            if saved:
+                logger.info(f"Cookie recovered from saved profile: user {saved['user_id']}")
+            else:
+                logger.warning("No valid cookie found after browser close")
+        else:
+            logger.warning(f"Login failed: {login_result['error']}")
+
+    asyncio.create_task(_run_login())
+
+    return {
+        "success": True,
+        "session_id": session_id,
+        "popup_url": None,
+        "already_logged_in": False,
+        "message": "ブラウザが開きます。Pixiv にログインしてください。ログイン後に自動的に反映されます。"
+    }
+
+
+@router.get("/pixiv/popup/{session_id}", response_class=HTMLResponse)
+async def pixiv_popup(session_id: str) -> str:
+    """Render popup page for Pixiv login (displayed in browser)."""
+    browser_session = BROWSER_SESSIONS.get(session_id)
+
+    if not browser_session:
+        return """
+        <html>
+            <head><title>Pixiv Login</title></head>
+            <body>
+                <h1>Error</h1>
+                <p>Session not found. Please start login again.</p>
+            </body>
+        </html>
+        """
+
+    if browser_session.is_expired():
+        del BROWSER_SESSIONS[session_id]
+        await browser_session.close()
+        return """
+        <html>
+            <head><title>Pixiv Login</title></head>
+            <body>
+                <h1>Session Expired</h1>
+                <p>Login session timed out. Please try again.</p>
+            </body>
+        </html>
+        """
+
+    # Wait for login completion, then close the Playwright browser
+    login_result = await browser_session.wait_for_login()
+    await browser_session.close()
+    BROWSER_SESSIONS.pop(session_id, None)
+
+    if login_result["success"]:
+        # Save to DB
+        _save_pixiv_session_to_db(
+            login_result["phpsessid"],
+            login_result["user_id"],
+            login_result["expires_at"]
+        )
+
+        return f"""
+        <html>
+            <head>
+                <title>Pixiv Login - Success</title>
+                <script>
+                    window.close();
+                </script>
+            </head>
+            <body>
+                <h1>✅ ログイン成功</h1>
+                <p>このウィンドウは自動的に閉じます...</p>
+            </body>
+        </html>
+        """
+    else:
+        return f"""
+        <html>
+            <head>
+                <title>Pixiv Login - Failed</title>
+            </head>
+            <body>
+                <h1>❌ ログイン失敗</h1>
+                <p>エラー: {login_result['error']}</p>
+                <button onclick="window.close()">ウィンドウを閉じる</button>
+            </body>
+        </html>
+        """
+
+
+@router.get("/pixiv/status")
+async def pixiv_status() -> dict:
+    """Get current Pixiv session status."""
+    session = _load_pixiv_session_from_db()
+    phpsessid = session.get("phpsessid")
+
+    if not phpsessid:
+        return {
+            "is_logged_in": False,
+            "is_valid": False,
+            "user_id": None,
+            "user_name": None,
+            "expires_at": None,
+            "last_validated": None,
+            "auto_refresh_interval": "1h",
+            "message": "ログインしていません"
+        }
+
+    # Validate current session
+    result = await validate_session(phpsessid)
+
+    return {
+        "is_logged_in": True,
+        "is_valid": result["is_valid"],
+        "user_id": session.get("user_id") or result.get("user_id"),
+        "user_name": result.get("user_name"),
+        "expires_at": session.get("expires_at"),
+        "last_validated": session.get("last_validated"),
+        "auto_refresh_interval": "1h",
+        "message": "ログイン済み" if result["is_valid"] else "セッション期限切れ"
+    }
+
+
+@router.post("/pixiv/refresh")
+async def pixiv_refresh() -> dict:
+    """Manually refresh Pixiv session."""
+    session = _load_pixiv_session_from_db()
+    phpsessid = session.get("phpsessid")
+
+    if not phpsessid:
+        logger.warning("No Pixiv session found for refresh")
+        return {
+            "success": False,
+            "refreshed": False,
+            "message": "ログインセッションが見つかりません"
+        }
+
+    # Validate current session
+    result = await validate_session(phpsessid)
+
+    if result["is_valid"]:
+        # Update last_validated timestamp
+        conn = get_conn()
+        now = datetime.now().isoformat()
+        try:
+            conn.execute(
+                """
+                INSERT INTO app_settings(key, value, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
+                """,
+                ("pixiv_session_last_validated", now, now, now, now)
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        logger.info("Pixiv session is still valid")
+        return {
+            "success": True,
+            "refreshed": False,
+            "message": "セッションはまだ有効です"
+        }
+
+    # Session expired; launch browser for re-login in background
+    logger.warning("Pixiv session expired; launching re-login browser...")
+    import asyncio
+
+    async def _relogin():
+        session_id = str(uuid.uuid4())
+        browser_session = PixivBrowserSession(session_id)
+        result = await browser_session.start_browser_for_login()
+        if not result["success"]:
+            return
+        if result.get("already_logged_in") and result.get("login_result"):
+            lr = result["login_result"]
+            _save_pixiv_session_to_db(lr["phpsessid"], lr["user_id"], lr["expires_at"])
+            return
+        login_result = await browser_session.wait_for_login()
+        await browser_session.close()
+        if login_result["success"]:
+            _save_pixiv_session_to_db(login_result["phpsessid"], login_result["user_id"], login_result["expires_at"])
+
+    asyncio.create_task(_relogin())
+    return {
+        "success": True,
+        "refreshed": False,
+        "message": "ブラウザを起動しました。Pixiv にログインしてください。"
+    }
+
+
+@router.post("/pixiv/logout")
+def pixiv_logout() -> dict:
+    """Logout and clear Pixiv session."""
+    conn = get_conn()
+    cur = conn.cursor()
+    now = datetime.now().isoformat()
+
+    try:
+        for key in ["pixiv_session", "pixiv_session_expires_at", "pixiv_session_user_id", "pixiv_session_last_validated"]:
+            cur.execute(
+                """
+                INSERT INTO app_settings(key, value, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
+                """,
+                (key, "", now, "", now)
+            )
+        conn.commit()
+        logger.info("Pixiv session cleared")
+        return {
+            "success": True,
+            "message": "ログアウトしました"
+        }
+    except Exception as e:
+        logger.error(f"Logout failed: {e}")
+        return {
+            "success": False,
+            "message": f"ログアウト失敗: {e}"
+        }
+    finally:
+        conn.close()

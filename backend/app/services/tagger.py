@@ -102,8 +102,20 @@ def _preprocess(image_path: str) -> np.ndarray:
     return arr[np.newaxis, ...]
 
 
-def predict(image_path: str) -> str:
-    """画像のパスを受け取り、コンマ区切りのタグ文字列を返す。"""
+def predict(
+    image_path: str,
+    general_thresh: float = GENERAL_THRESHOLD,
+    character_thresh: float = CHARACTER_THRESHOLD,
+    remove_character_tags: bool = False,
+) -> str:
+    """画像のパスを受け取り、コンマ区切りのタグ文字列を返す。
+
+    Args:
+        image_path: 画像ファイルパス
+        general_thresh: 一般タグの信頼度しきい値 (0.05–0.95, デフォルト 0.35)
+        character_thresh: キャラクタータグの信頼度しきい値 (0.05–0.99, デフォルト 0.85)
+        remove_character_tags: Trueならキャラクタータグ(category=4)を除外する
+    """
     session, tags_data = _ensure_model()
 
     inp = _preprocess(image_path)
@@ -123,7 +135,9 @@ def predict(image_path: str) -> str:
             continue
         if cat == 5:  # copyright — LoRAに混入させない
             continue
-        threshold = CHARACTER_THRESHOLD if cat == 4 else GENERAL_THRESHOLD
+        if cat == 4 and remove_character_tags:  # キャラクタータグ除外オプション
+            continue
+        threshold = character_thresh if cat == 4 else general_thresh
         if score >= threshold and name:
             result.append(name)
 

@@ -1,4 +1,4 @@
-param()
+﻿param()
 
 $ErrorActionPreference = "SilentlyContinue"
 
@@ -44,3 +44,4 @@ Stop-PortOwner 5173
 Stop-PortOwner 8000
 
 Write-Host "[ok] stop_all complete."
+

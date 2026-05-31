@@ -1,4 +1,4 @@
-param()
+﻿param()
 
 $ErrorActionPreference = "Stop"
 
@@ -31,3 +31,4 @@ function Start-Desktop($rootPath) {
 
 Ensure-DesktopDeps $root
 Start-Desktop $root
+

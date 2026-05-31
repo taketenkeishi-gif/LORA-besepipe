@@ -3,7 +3,7 @@ import {
   LayoutDashboard,
   FolderKanban,
   ImagePlus,
-  Zap,
+  Wand2,
   Settings2,
   BookOpen,
   Archive,
@@ -12,6 +12,7 @@ import {
   WifiOff,
   AlertCircle,
   CheckCircle2,
+  Sparkles,
 } from "lucide-react";
 import type { TabId } from "../types";
 
@@ -21,7 +22,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "dashboard", label: "ダッシュボード", icon: <LayoutDashboard size={18} /> },
   { id: "projects", label: "プロジェクト管理", icon: <FolderKanban size={18} /> },
   { id: "dataset", label: "データセット作成", icon: <ImagePlus size={18} /> },
-  { id: "training", label: "学習制御", icon: <Zap size={18} /> },
+  { id: "training", label: "学習制御", icon: <Wand2 size={18} /> },
   { id: "library", label: "LoRA ライブラリ", icon: <Archive size={18} /> },
   { id: "integrations", label: "外部連携設定", icon: <Settings2 size={18} /> },
   { id: "guide", label: "使い方ガイド", icon: <BookOpen size={18} /> },
@@ -54,14 +55,14 @@ export default function Layout({
       {/* Sidebar */}
       <aside className="w-64 flex-shrink-0 bg-gray-900 border-r border-gray-800 flex flex-col">
         {/* Logo */}
-        <div className="px-5 py-5 border-b border-gray-800">
+        <div className="px-5 py-5 border-b border-gray-800 bg-gradient-to-r from-gray-900 to-gray-800">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center flex-shrink-0">
-              <Zap size={16} className="text-white" />
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center flex-shrink-0 shadow-lg">
+              <Sparkles size={16} className="text-white" />
             </div>
             <div>
-              <div className="text-sm font-bold text-gray-100 leading-tight">LoRA制作</div>
-              <div className="text-xs text-gray-400 leading-tight">ワークベンチ</div>
+              <div className="text-sm font-bold text-white leading-tight">LoRA Basepipe</div>
+              <div className="text-xs text-amber-400/70 leading-tight font-semibold">制作ワークベンチ</div>
             </div>
           </div>
         </div>
@@ -75,7 +76,7 @@ export default function Layout({
               className={[
                 "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left",
                 tab === id
-                  ? "bg-indigo-600 text-white"
+                  ? "bg-gradient-to-r from-orange-600 to-amber-600 text-white shadow-md"
                   : "text-gray-400 hover:text-gray-100 hover:bg-gray-800",
               ].join(" ")}
             >
