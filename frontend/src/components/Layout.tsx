@@ -6,6 +6,7 @@ import {
   Zap,
   Settings2,
   BookOpen,
+  Archive,
   RefreshCw,
   Wifi,
   WifiOff,
@@ -21,6 +22,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "projects", label: "プロジェクト管理", icon: <FolderKanban size={18} /> },
   { id: "dataset", label: "データセット作成", icon: <ImagePlus size={18} /> },
   { id: "training", label: "学習制御", icon: <Zap size={18} /> },
+  { id: "library", label: "LoRA ライブラリ", icon: <Archive size={18} /> },
   { id: "integrations", label: "外部連携設定", icon: <Settings2 size={18} /> },
   { id: "guide", label: "使い方ガイド", icon: <BookOpen size={18} /> },
 ];

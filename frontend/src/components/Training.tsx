@@ -34,6 +34,7 @@ import type {
   Preset,
   DatasetReport,
   TrainingMode,
+  ResourceStats,
 } from "../types";
 
 type Props = {
@@ -106,6 +107,33 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between">
       <dt className="text-gray-500">{label}</dt>
       <dd className="text-gray-300 font-medium">{value}</dd>
+    </div>
+  );
+}
+
+function ResourceBar({
+  label,
+  pct,
+  text,
+  color,
+}: {
+  label: string;
+  pct: number;
+  text: string;
+  color: string;
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+        <span>{label}</span>
+        <span className="font-mono">{text}</span>
+      </div>
+      <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${color}`}
+          style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+        />
+      </div>
     </div>
   );
 }
@@ -398,6 +426,10 @@ export default function Training({
   const [showLog, setShowLog] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
 
+  // ── リソースモニター ──────────────────────────────────────────────────
+  const [resources, setResources] = useState<ResourceStats | null>(null);
+  const [showResources, setShowResources] = useState(false);
+
   // ── プレビュー ───────────────────────────────────────────────────────
   const [timeline, setTimeline] = useState<PreviewSample[]>([]);
   const [datasetPreview, setDatasetPreview] = useState<DatasetPreview | null>(null);
@@ -432,6 +464,14 @@ export default function Training({
     }, 2000);
     return () => clearInterval(timer);
   }, [isTraining, selectedProject?.id, showLog]);
+
+  // ── リソースモニターポーリング（表示中のみ） ──────────────────────────
+  useEffect(() => {
+    if (!showResources) return;
+    void loadResources();
+    const timer = setInterval(() => void loadResources(), 3000);
+    return () => clearInterval(timer);
+  }, [showResources]);
 
   useEffect(() => {
     if (logRef.current) {
@@ -478,6 +518,15 @@ export default function Training({
       setDatasetPreview(r);
     } catch {
       setDatasetPreview(null);
+    }
+  }
+
+  async function loadResources() {
+    try {
+      const r = await apiGet<ResourceStats>("/training/resources");
+      setResources(r);
+    } catch {
+      // ignore — psutil not installed or endpoint unavailable
     }
   }
 
@@ -985,6 +1034,90 @@ export default function Training({
                     更新
                   </button>
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Resource Monitor (§18) ── */}
+          <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+            <button
+              className="w-full flex items-center justify-between px-5 py-4 text-sm font-semibold text-gray-200 hover:bg-gray-750 transition-colors"
+              onClick={() => setShowResources((s) => !s)}
+            >
+              <span className="flex items-center gap-2">
+                <Cpu size={15} className="text-sky-400" />
+                リソースモニター
+                {isTraining && showResources && (
+                  <span className="inline-flex items-center gap-1 text-xs text-sky-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+                    LIVE
+                  </span>
+                )}
+                {resources && (
+                  <span className="text-xs text-gray-500 font-normal">
+                    CPU {resources.cpu_pct.toFixed(0)}% | RAM {resources.ram_used_gb}GB
+                    {resources.gpu_available && resources.gpu[0] &&
+                      ` | VRAM ${resources.gpu[0].vram_used_mb}MB`}
+                  </span>
+                )}
+              </span>
+              {showResources ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+            </button>
+            {showResources && (
+              <div className="px-5 pb-5 border-t border-gray-700 space-y-4 mt-4">
+                {!resources ? (
+                  <p className="text-xs text-gray-500">読み込み中...</p>
+                ) : (
+                  <>
+                    {/* CPU / RAM */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <ResourceBar
+                        label="CPU"
+                        pct={resources.cpu_pct}
+                        text={`${resources.cpu_pct.toFixed(1)}%`}
+                        color="bg-sky-500"
+                      />
+                      <ResourceBar
+                        label={`RAM  ${resources.ram_used_gb} / ${resources.ram_total_gb} GB`}
+                        pct={resources.ram_pct}
+                        text={`${resources.ram_pct.toFixed(1)}%`}
+                        color={resources.ram_pct > 85 ? "bg-red-500" : "bg-sky-500"}
+                      />
+                    </div>
+
+                    {/* GPU */}
+                    {resources.gpu_available ? (
+                      <div className="space-y-3">
+                        {resources.gpu.map((g) => (
+                          <div key={g.index} className="bg-gray-700/50 rounded-lg p-3 space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-gray-300 font-medium truncate">{g.name}</span>
+                              {g.temperature != null && (
+                                <span className={`font-mono ml-2 shrink-0 ${g.temperature >= 80 ? "text-red-400" : g.temperature >= 70 ? "text-amber-400" : "text-gray-400"}`}>
+                                  {g.temperature}°C
+                                </span>
+                              )}
+                            </div>
+                            <ResourceBar
+                              label={`VRAM  ${g.vram_used_mb} / ${g.vram_total_mb} MB`}
+                              pct={g.vram_pct}
+                              text={`${g.vram_pct.toFixed(1)}%`}
+                              color={g.vram_pct > 90 ? "bg-red-500" : g.vram_pct > 75 ? "bg-amber-500" : "bg-emerald-500"}
+                            />
+                            <ResourceBar
+                              label="GPU Util"
+                              pct={g.gpu_util_pct}
+                              text={`${g.gpu_util_pct.toFixed(0)}%`}
+                              color="bg-violet-500"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-500">GPU 情報なし（nvidia-smi / pynvml 未検出）</p>
+                    )}
+                  </>
+                )}
               </div>
             )}
           </div>

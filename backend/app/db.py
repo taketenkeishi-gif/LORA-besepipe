@@ -99,6 +99,24 @@ def init_db() -> None:
             analyzed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(project_id) REFERENCES projects(id)
         );
+
+        CREATE TABLE IF NOT EXISTS lora_assets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER,
+            name TEXT NOT NULL,
+            lora_path TEXT NOT NULL DEFAULT '',
+            base_model TEXT NOT NULL DEFAULT '',
+            dataset_size INTEGER NOT NULL DEFAULT 0,
+            profile_name TEXT NOT NULL DEFAULT '',
+            tags_json TEXT NOT NULL DEFAULT '[]',
+            notes TEXT NOT NULL DEFAULT '',
+            preview_path TEXT NOT NULL DEFAULT '',
+            training_config_json TEXT NOT NULL DEFAULT '{}',
+            quality_score INTEGER,
+            asset_type TEXT NOT NULL DEFAULT 'character',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(project_id) REFERENCES projects(id)
+        );
         """
     )
     _ensure_column(cur, "training_runs", "current_epoch", "INTEGER NOT NULL DEFAULT 0")

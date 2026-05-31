@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .db import init_db
-from .routers import collector, dataset, previews, presets, projects, settings, tags, training
+from .routers import collector, dataset, library, previews, presets, projects, settings, tags, training
 
 app = FastAPI(title="LoRA Workbench API", version="0.1.0")
 
@@ -24,6 +24,7 @@ app.include_router(training.router)
 app.include_router(previews.router)
 app.include_router(settings.router)
 app.include_router(presets.router)
+app.include_router(library.router)
 
 
 @app.on_event("startup")

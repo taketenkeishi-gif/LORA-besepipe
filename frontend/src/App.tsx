@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen } from "lucide-react";
 import Layout from "./components/Layout";
 import Dashboard from "./components/Dashboard";
 import Projects from "./components/Projects";
 import Dataset from "./components/Dataset";
 import Training from "./components/Training";
+import Library from "./components/Library";
 import Integrations from "./components/Integrations";
 import { apiGet, apiPost } from "./lib/api";
 import type {
@@ -151,6 +151,14 @@ export default function App() {
           {...commonProps}
           prompts={prompts}
           onPromptsChange={setPrompts}
+        />
+      )}
+      {tab === "library" && (
+        <Library
+          projects={projects}
+          selectedProjectId={selectedProjectId}
+          showError={showError}
+          showNotice={showNotice}
         />
       )}
       {tab === "integrations" && (

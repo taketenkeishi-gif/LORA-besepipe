@@ -821,6 +821,100 @@ def status(project_id: int) -> dict:
     }
 
 
+@router.get("/resources")
+def get_resources() -> dict:
+    """
+    §18 Resource Monitor — CPU / RAM / GPU 使用状況を返す。
+    psutil で CPU/RAM、nvidia-smi で GPU を取得する。
+    """
+    # ── CPU / RAM (psutil) ────────────────────────────────────────────────
+    try:
+        import psutil
+        cpu_pct = psutil.cpu_percent(interval=0.1)
+        mem = psutil.virtual_memory()
+        ram_used_gb = round(mem.used / 1024 ** 3, 2)
+        ram_total_gb = round(mem.total / 1024 ** 3, 2)
+        ram_pct = round(mem.percent, 1)
+    except ImportError:
+        cpu_pct = 0.0
+        ram_used_gb = 0.0
+        ram_total_gb = 0.0
+        ram_pct = 0.0
+
+    # ── GPU (pynvml → nvidia-smi フォールバック) ──────────────────────────
+    gpu_list: list[dict] = []
+    gpu_available = False
+
+    try:
+        import pynvml  # type: ignore
+        pynvml.nvmlInit()
+        count = pynvml.nvmlDeviceGetCount()
+        for i in range(count):
+            handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+            name = pynvml.nvmlDeviceGetName(handle)
+            if isinstance(name, bytes):
+                name = name.decode("utf-8")
+            mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            util = pynvml.nvmlDeviceGetUtilizationRates(handle)
+            try:
+                temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
+            except Exception:
+                temp = None
+            vram_total_mb = mem_info.total // (1024 * 1024)
+            vram_used_mb = mem_info.used // (1024 * 1024)
+            gpu_list.append({
+                "index": i,
+                "name": name,
+                "vram_used_mb": vram_used_mb,
+                "vram_total_mb": vram_total_mb,
+                "vram_pct": round(vram_used_mb / vram_total_mb * 100, 1) if vram_total_mb else 0.0,
+                "gpu_util_pct": float(util.gpu),
+                "temperature": temp,
+            })
+        gpu_available = len(gpu_list) > 0
+        pynvml.nvmlShutdown()
+    except Exception:
+        # pynvml 未インストール or GPU なし → nvidia-smi で試みる
+        try:
+            result = subprocess.run(
+                ["nvidia-smi",
+                 "--query-gpu=name,memory.used,memory.total,utilization.gpu,temperature.gpu",
+                 "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                for i, line in enumerate(result.stdout.strip().splitlines()):
+                    parts = [p.strip() for p in line.split(",")]
+                    if len(parts) >= 5:
+                        vram_used_mb = int(parts[1])
+                        vram_total_mb = int(parts[2])
+                        try:
+                            temp_val: int | None = int(parts[4])
+                        except ValueError:
+                            temp_val = None
+                        gpu_list.append({
+                            "index": i,
+                            "name": parts[0],
+                            "vram_used_mb": vram_used_mb,
+                            "vram_total_mb": vram_total_mb,
+                            "vram_pct": round(vram_used_mb / vram_total_mb * 100, 1) if vram_total_mb else 0.0,
+                            "gpu_util_pct": float(parts[3]),
+                            "temperature": temp_val,
+                        })
+                gpu_available = len(gpu_list) > 0
+        except Exception:
+            pass
+
+    return {
+        "cpu_pct": cpu_pct,
+        "ram_used_gb": ram_used_gb,
+        "ram_total_gb": ram_total_gb,
+        "ram_pct": ram_pct,
+        "gpu": gpu_list,
+        "gpu_available": gpu_available,
+    }
+
+
 @router.get("/dataset-preview")
 def dataset_preview(project_id: int, train_data_dir: str = "") -> dict:
     _ensure_project(project_id)

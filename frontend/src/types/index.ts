@@ -3,6 +3,7 @@ export type TabId =
   | "projects"
   | "dataset"
   | "training"
+  | "library"
   | "integrations"
   | "guide";
 
@@ -233,4 +234,77 @@ export type TrainingMode = {
   kohya_root: string;
   train_script: string | null;
   message: string;
+};
+
+// ── Phase 5: Asset Library (§22-23) ───────────────────────────────────────
+
+export type LoraAsset = {
+  id: number;
+  project_id: number | null;
+  name: string;
+  lora_path: string;
+  base_model: string;
+  dataset_size: number;
+  profile_name: string;
+  tags: string[];
+  notes: string;
+  preview_path: string;
+  training_config: Record<string, unknown>;
+  quality_score: number | null;
+  asset_type: string;
+  created_at: string;
+};
+
+export type LoraAssetPayload = {
+  project_id?: number | null;
+  name: string;
+  lora_path?: string;
+  base_model?: string;
+  dataset_size?: number;
+  profile_name?: string;
+  tags?: string[];
+  notes?: string;
+  preview_path?: string;
+  training_config?: Record<string, unknown>;
+  quality_score?: number | null;
+  asset_type?: string;
+};
+
+// ── Phase 5: Distribution Analysis (§9.2-9.4) ─────────────────────────────
+
+export type DistributionItem = {
+  label: string;
+  count: number;
+  pct: number;
+};
+
+export type DistributionData = {
+  project_id: number;
+  total_items: number;
+  captioned_items: number;
+  hair_color: DistributionItem[];
+  hair_style: DistributionItem[];
+  eye_color: DistributionItem[];
+  costume: DistributionItem[];
+};
+
+// ── Phase 5: Resource Monitor (§18) ───────────────────────────────────────
+
+export type GpuInfo = {
+  index: number;
+  name: string;
+  vram_used_mb: number;
+  vram_total_mb: number;
+  vram_pct: number;
+  gpu_util_pct: number;
+  temperature: number | null;
+};
+
+export type ResourceStats = {
+  cpu_pct: number;
+  ram_used_gb: number;
+  ram_total_gb: number;
+  ram_pct: number;
+  gpu: GpuInfo[];
+  gpu_available: boolean;
 };

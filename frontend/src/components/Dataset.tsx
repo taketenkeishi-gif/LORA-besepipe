@@ -45,6 +45,7 @@ import type {
   SimilarityGroup,
   CharacterLeakResult,
   TagCategoriesResult,
+  DistributionData,
 } from "../types";
 
 type Props = {
@@ -140,6 +141,8 @@ export default function Dataset({
   const [leakData, setLeakData] = useState<CharacterLeakResult | null>(null);
   const [categoryData, setCategoryData] = useState<TagCategoriesResult | null>(null);
   const [leakLoading, setLeakLoading] = useState(false);
+  const [distributionData, setDistributionData] = useState<DistributionData | null>(null);
+  const [distributionLoading, setDistributionLoading] = useState(false);
 
   const minW = parseIntOr(minWText, 0, 0);
   const minH = parseIntOr(minHText, 0, 0);
@@ -260,6 +263,19 @@ export default function Dataset({
       showError(`リーク分析失敗: ${String(e)}`);
     } finally {
       setLeakLoading(false);
+    }
+  }
+
+  async function loadDistribution() {
+    if (!selectedProject) return;
+    setDistributionLoading(true);
+    try {
+      const d = await apiGet<DistributionData>(`/dataset/distribution/${selectedProject.id}`);
+      setDistributionData(d);
+    } catch (e) {
+      showError(`分布分析失敗: ${String(e)}`);
+    } finally {
+      setDistributionLoading(false);
     }
   }
 
@@ -1380,9 +1396,99 @@ export default function Dataset({
                   )}
                 </>
               )}
+
+              {/* ── §9.2-9.4 Distribution Analysis ── */}
+              <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Layers size={15} className="text-sky-400" />
+                  <span className="text-sm font-semibold text-gray-200">§9.2-9.4 分布分析</span>
+                  {distributionData && (
+                    <span className="text-xs text-gray-500">{distributionData.captioned_items}/{distributionData.total_items}枚</span>
+                  )}
+                </div>
+                <button
+                  onClick={() => void loadDistribution()}
+                  disabled={distributionLoading}
+                  className="flex items-center gap-1.5 bg-sky-900 hover:bg-sky-800 disabled:bg-gray-700 disabled:text-gray-500 text-sky-100 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
+                >
+                  {distributionLoading ? <Loader2 size={13} className="animate-spin" /> : <BarChart2 size={13} />}
+                  {distributionData ? "再分析" : "分布分析実行"}
+                </button>
+              </div>
+
+              {distributionData && (
+                <div className="grid grid-cols-2 gap-4">
+                  <DistributionTopBar
+                    title="髪色分布"
+                    items={distributionData.hair_color}
+                    total={distributionData.captioned_items}
+                    color="bg-amber-500"
+                  />
+                  <DistributionTopBar
+                    title="髪型分布"
+                    items={distributionData.hair_style}
+                    total={distributionData.captioned_items}
+                    color="bg-violet-500"
+                  />
+                  <DistributionTopBar
+                    title="瞳色分布"
+                    items={distributionData.eye_color}
+                    total={distributionData.captioned_items}
+                    color="bg-sky-500"
+                  />
+                  <DistributionTopBar
+                    title="衣装分布"
+                    items={distributionData.costume}
+                    total={distributionData.captioned_items}
+                    color="bg-emerald-500"
+                  />
+                </div>
+              )}
             </>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+function DistributionTopBar({
+  title,
+  items,
+  total,
+  color,
+}: {
+  title: string;
+  items: { label: string; count: number; pct: number }[];
+  total: number;
+  color: string;
+}) {
+  const topItems = items.slice(0, 6);
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+      <h4 className="text-xs font-semibold text-gray-400 mb-3">{title}</h4>
+      {topItems.length === 0 ? (
+        <p className="text-xs text-gray-600">該当なし</p>
+      ) : (
+        <div className="space-y-2">
+          {topItems.map(({ label, count, pct }) => (
+            <div key={label}>
+              <div className="flex justify-between text-xs text-gray-400 mb-1">
+                <span className="truncate flex-1 mr-2">{label}</span>
+                <span className="shrink-0">{count}枚 ({pct}%)</span>
+              </div>
+              <div className="w-full bg-gray-700 rounded-full h-1.5">
+                <div
+                  className={`${color} h-1.5 rounded-full transition-all`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          ))}
+          {items.length > 6 && (
+            <p className="text-xs text-gray-600 mt-1">+{items.length - 6}件省略</p>
+          )}
+        </div>
       )}
     </div>
   );

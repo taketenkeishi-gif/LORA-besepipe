@@ -10,6 +10,10 @@ from PIL import Image, UnidentifiedImageError
 from ..db import get_conn
 from ..services.tag_categories import (
     CATEGORIES,
+    HAIR_COLORS,
+    HAIR_STYLES,
+    EYE_COLORS,
+    COSTUME_TYPES,
     LEAK_RISK_COMBOS,
     classify_caption,
     detect_dominant_feature,
@@ -599,4 +603,59 @@ def tag_categories(project_id: int) -> dict:
         "project_id": project_id,
         "total_items": total_items,
         "categories": category_details,
+    }
+
+
+# ── §9.2-9.4 Distribution Analysis ───────────────────────────────────────────
+
+def _count_distribution(captions: list[str], feature_group: list[str]) -> list[dict]:
+    """feature_group の各フィーチャーが何枚のキャプションに出現するか集計する。"""
+    counts: dict[str, int] = {}
+    total_captioned = len(captions)
+    for caption in captions:
+        caption_lower = caption.lower()
+        for feature in feature_group:
+            if feature in caption_lower:
+                counts[feature] = counts.get(feature, 0) + 1
+    # pct 付きでソート（降順）
+    result = []
+    for feature, cnt in sorted(counts.items(), key=lambda x: x[1], reverse=True):
+        result.append({
+            "label": feature,
+            "count": cnt,
+            "pct": round(cnt / total_captioned * 100, 1) if total_captioned else 0.0,
+        })
+    return result
+
+
+@router.get("/distribution/{project_id}")
+def get_distribution(project_id: int) -> dict:
+    """
+    §9.2-9.4 Dataset Distribution Analysis
+    キャプションから髪色・髪型・瞳色・衣装のタグ分布を集計して返す。
+    """
+    conn = get_conn()
+    project = conn.execute("SELECT id FROM projects WHERE id = ?", (project_id,)).fetchone()
+    if project is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail=f"project not found: {project_id}")
+
+    rows = conn.execute(
+        "SELECT caption FROM dataset_items WHERE project_id = ? AND selected = 1",
+        (project_id,),
+    ).fetchall()
+    conn.close()
+
+    captions = [str(r["caption"] or "").strip() for r in rows]
+    captioned = [c for c in captions if c]
+    total = len(captions)
+
+    return {
+        "project_id": project_id,
+        "total_items": total,
+        "captioned_items": len(captioned),
+        "hair_color": _count_distribution(captioned, HAIR_COLORS),
+        "hair_style": _count_distribution(captioned, HAIR_STYLES),
+        "eye_color": _count_distribution(captioned, EYE_COLORS),
+        "costume": _count_distribution(captioned, COSTUME_TYPES),
     }
