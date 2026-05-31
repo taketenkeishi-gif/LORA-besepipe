@@ -172,16 +172,18 @@ app_settings      -- ツールパス等の設定
 |------|---------|--------|
 | ~~Dataset Dashboard（品質スコア・解像度分布）~~ | §8 | ✅ 完了 |
 | ~~Similarity Analysis（重複・類似検出）~~ | §9.1 | ✅ 完了 |
+| ~~Distribution Analysis（髪色・衣装分布）~~ | §9.2-9.4 | ✅ 完了 |
 | ~~Character Leak Analysis~~ | §11 | ✅ 完了 |
 | ~~Caption Category Classification~~ | §12 | ✅ 完了 |
 | ~~Human Review Gate（学習前承認フロー）~~ | §16 | ✅ 完了 |
 | ~~Training Profiles（Style/Character/Hybrid）~~ | §17.3 | ✅ 完了 |
 | ~~kohya_ss 実接続（学習のシミュレーション解除）~~ | — | ✅ 完了 |
+| ~~Resource Monitor（CPU/RAM/GPU モニタリング）~~ | §18 | ✅ 完了 |
+| ~~Asset Library（LoRA 資産管理）~~ | §22-23 | ✅ 完了 |
 | JoyCaption / Florence2 統合 | §13 | ⭐⭐ |
 | Dataset Refinery（ComfyUI 前処理） | §14 | ⭐⭐ |
 | Live Preview（ComfyUI 実接続） | §19 | ⭐ |
 | Evaluation Module（LoRA 品質評価） | §20-21 | ⭐ |
-| Asset Library（LoRA 資産管理） | §22-23 | ⭐ |
 | Recipe System | §24 | ⭐ |
 
 ---
@@ -213,6 +215,32 @@ app_settings      -- ツールパス等の設定
   - 学習ログビューア（LIVE ポーリング対応）
   - loss 表示
 
+### Phase 5 — Asset Library + Distribution Analysis + Resource Monitor（2026-05-31）
+- [x] `db.py` — `lora_assets` テーブル追加（id/project_id/name/lora_path/base_model/dataset_size/profile_name/tags_json/notes/training_config_json/quality_score/asset_type/created_at）
+- [x] `routers/library.py` 新規追加
+  - `GET /library/assets` — 一覧（project_id/asset_type フィルタ対応）
+  - `POST /library/assets` — 作成
+  - `GET /library/assets/{id}` — 取得
+  - `PUT /library/assets/{id}` — 更新（差分のみ）
+  - `DELETE /library/assets/{id}` — 削除（ファイルは保持）
+  - `GET /library/stats` — 統計（総数・タイプ別・平均スコア）
+- [x] `routers/dataset.py` に `GET /dataset/distribution/{project_id}` 追加
+  - §9.2-9.4: HAIR_COLORS / HAIR_STYLES / EYE_COLORS / COSTUME_TYPES 分布集計
+- [x] `routers/training.py` に `GET /training/resources` 追加
+  - §18: psutil で CPU%/RAM、pynvml → nvidia-smi フォールバックで GPU VRAM/Util/温度
+- [x] `requirements.txt` — `psutil>=5.9.0` 追加・インストール済み
+- [x] `types/index.ts` — `LoraAsset`, `LoraAssetPayload`, `DistributionItem`, `DistributionData`, `GpuInfo`, `ResourceStats` 追加
+- [x] `Library.tsx` 新規追加
+  - 資産カードグリッド（タイプ/プロジェクト/検索フィルタ）
+  - 品質スコアバッジ（緑/黄/赤）
+  - 編集モーダル（名前・タイプ・パス・ベースモデル・プロファイル・タグ・メモ・スコア）
+- [x] `Layout.tsx` / `App.tsx` — `"library"` タブ追加
+- [x] `Training.tsx` — §18 リソースモニターカード追加
+  - CPU%/RAM バー、GPU VRAM/Util/温度バー
+  - 学習中に 3 秒ポーリング
+- [x] `Dataset.tsx` — §9.2-9.4 分布分析 UI 追加
+  - 髪色・髪型・瞳色・衣装の Top-6 バーチャート
+
 ## 既知の制約・注意点
 
 - **kohya_ss 実接続** — `Integrations` タブで `kohya_root` と `python_exe` を設定することで有効化。未設定時はシミュレーションにフォールバック
@@ -237,4 +265,14 @@ app_settings      -- ツールパス等の設定
 
 ---
 
-*最終更新: 2026-05-31 | Phase 4 完了（§16 Human Review Gate + §17.3 Training Profiles + kohya_ss 実接続）*
+## 次のアクション候補（残 SPEC）
+
+1. **JoyCaption 統合（§13）** — LLM によるテキスト生成型キャプション（WD14 に代わる第2の選択肢）
+2. **Dataset Refinery（§14）** — ComfyUI 前処理ワークフロー連携
+3. **Live Preview（§19）** — ComfyUI 実接続によるリアルタイムプレビュー
+4. **Evaluation Module（§20-21）** — LoRA 品質評価スコア算出
+5. **Recipe System（§24）** — 学習設定の共有・複製フロー
+
+---
+
+*最終更新: 2026-05-31 | Phase 5 完了（§9.2-9.4 Distribution + §18 Resource Monitor + §22-23 Asset Library）*
