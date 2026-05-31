@@ -1,4 +1,4 @@
-param(
+﻿param(
   [switch]$Restart
 )
 
@@ -13,7 +13,7 @@ New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 if ($Restart) {
   Write-Host "[restart] stopping existing backend/frontend"
   & (Join-Path $root "scripts\stop_all.ps1")
-  Start-Sleep -Milliseconds 400
+  Start-Sleep -Milliseconds 1500  # ポート解放を待つ
 }
 
 function Test-Endpoint($url) {
@@ -77,7 +77,7 @@ function Start-Backend($rootPath) {
   $err = Join-Path $logDir "backend.err.log"
   $p = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $cmd -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err -PassThru
   Set-Content -Path (Join-Path $runtimeDir "backend.pid") -Value $p.Id
-  if (-not (Wait-Endpoint "http://127.0.0.1:8000/health" 45)) {
+  if (-not (Wait-Endpoint "http://127.0.0.1:8000/health" 90)) {
     throw "backend failed to start. logs: $out / $err"
   }
   Write-Host "[ok] backend ready"
@@ -110,3 +110,4 @@ Write-Host "Started:"
 Write-Host "  Backend : http://127.0.0.1:8000/docs"
 Write-Host "  Frontend: http://127.0.0.1:5173"
 Write-Host "  Logs    : $logDir"
+
