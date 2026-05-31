@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
+*.log
+workspace.db
+_pdf_extracted.txt
+Lo Ra制作ワークベンチ 企画書.pdf
+projects/*
+!projects/.gitkeep
+external_tools/
+.runtime/
