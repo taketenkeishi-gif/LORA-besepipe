@@ -8,7 +8,31 @@ type LinkMember={job:string;video:string;folder:string;images:number;outfits:str
 type Instance={label:string;images:number;sample:string[]};
 type Cluster={id:number;groups:number;images:number;hair:string;eyes:string;members:LinkMember[];instances?:Instance[];videos?:number;video_names?:string[];tier?:'recommended'|'candidate'|'few'};
 type Metrics={groups:number;jobs:number;clusters:number;multi_group_clusters:number;merged_conflicts_must_be_0:number;hair_agreement_inside_merged_clusters:number|null;merge_bar:number};
-type Result={state:{running:boolean;error:string;log:string};auto?:{clusters:Cluster[];metrics:Metrics};suggest?:{clusters:Cluster[];metrics:Metrics}};
+type PropInstance={label:string;images:number;videos:number;sample:string[]};
+type Proposal={cluster:number;name:string;images:number;videos:number;video_names:string[];groups:number;hair:string;eyes:string;members:{job:string;folder:string}[];instances:PropInstance[];character_only_images:number;min_instance_images:number};
+type Result={state:{running:boolean;error:string;log:string};auto?:{clusters:Cluster[];metrics:Metrics};suggest?:{clusters:Cluster[];metrics:Metrics};proposals?:Proposal[]};
+
+// One ready-to-make LoRA: who, how many images, and which instances (same outfit across videos = one instance).
+function ProposalCard({pid,p,rank,similar,busy,onCreate,onAdjust}:{pid:number;p:Proposal;rank:number;similar:(Proposal&{rank:number})[];busy:boolean;onCreate:(name:string,members:{job:string;folder:string}[])=>void;onAdjust:(members:{job:string;folder:string}[])=>void}){
+ const [name,setName]=useState(p.name),[withSimilar,setWithSimilar]=useState(false);
+ const members=withSimilar?[...p.members,...similar.flatMap(s=>s.members)]:p.members;
+ const images=p.images+(withSimilar?similar.reduce((a,s)=>a+s.images,0):0);
+ return <div style={{border:'1px solid var(--gray-6)',borderRadius:8,padding:10,minWidth:0}}>
+  <Flex gap="2" align="center" wrap="wrap"><Badge color="green">提案 {rank}</Badge><Text size="2" weight="bold">{p.images}枚・{p.videos}本の動画に登場</Text><Text size="1" color="gray">{p.hair||'髪色不明'} / {p.eyes||'瞳色不明'}・{p.groups}グループ</Text></Flex>
+  <Text as="div" size="1" color="gray" mt="1">インスタンス（衣装ごとのトリガー）{p.instances.length}種類・どれにも入らない {p.character_only_images}枚はキャラ本体のトリガーだけで学習（{p.min_instance_images}枚未満の衣装・衣装不明）</Text>
+  <Flex gap="2" mt="2" style={{overflowX:'auto',paddingBottom:4}}>{p.instances.map(o=><div key={o.label} style={{flex:'0 0 auto',width:178}}>
+   <Flex gap="1">{o.sample.map(f=><img key={f} src={img(pid,f)} alt={o.label} loading="lazy" style={{width:57,height:57,objectFit:'cover',borderRadius:4}}/>)}</Flex>
+   <Text as="div" size="1" style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={o.label}>{o.label}</Text>
+   <Text as="div" size="1" color="gray">{o.images}枚・{o.videos}本</Text></div>)}
+   {!p.instances.length&&<Text size="1" color="gray">衣装ごとに十分な枚数がないため、キャラ本体のみのLoRAになります。</Text>}</Flex>
+  {similar.length>0&&<Flex gap="2" align="center" mt="1"><Checkbox checked={withSimilar} onCheckedChange={v=>setWithSimilar(v===true)} aria-label="似た候補もまとめる"/>
+   <Text size="1">髪と瞳が同じ候補（提案 {similar.map(s=>s.rank).join('・')}、計 {similar.reduce((a,s)=>a+s.images,0)}枚）も同じキャラとしてまとめる</Text></Flex>}
+  <Flex gap="2" align="center" wrap="wrap" mt="2">
+   <TextField.Root size="1" style={{width:200}} aria-label="新しいキャラの名前" value={name} onChange={e=>setName(e.target.value)}/>
+   <Button size="1" disabled={busy||!name.trim()} onClick={()=>onCreate(name.trim(),members)}>{busy?<Spinner/>:null}この提案で新規プロジェクトを作る（{images}枚）</Button>
+   <Button size="1" variant="soft" color="gray" onClick={()=>onAdjust(members)}>下で足し引きする</Button></Flex>
+ </div>;
+}
 type Group={job:string;video:string;folder:string;images:number;sample:string[];outfits:string[]};
 
 const base=(pid:number)=>`/dataset-files/${pid}/video-links`;
@@ -22,20 +46,32 @@ function Strip({pid,files}:{pid:number;files:string[]}){
 export default function CharacterLinkPanel({projectId,onCreated}:{projectId:number;onCreated:(projectId:number,images:number)=>void}){
  const [res,setRes]=useState<Result|null>(null),[groups,setGroups]=useState<Group[]>([]),[picked,setPicked]=useState<Set<string>>(new Set()),[name,setName]=useState('');
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[created,setCreated]=useState<string[]>([]);
- const load=useCallback(async()=>{try{setRes(await apiGet<Result>(`${base(projectId)}/result`));setGroups((await apiGet<{groups:Group[]}>(`${base(projectId)}/groups`)).groups);}catch(e){setError(e instanceof Error?e.message:String(e));}},[projectId]);
+ const [loading,setLoading]=useState(true),[groupsOpen,setGroupsOpen]=useState(false);
+ // candidates alone are enough to pick from; the full group list is fetched only when "pick by hand" is opened
+ const load=useCallback(async()=>{try{setRes(await apiGet<Result>(`${base(projectId)}/result`,60000));}catch(e){setError(e instanceof Error?e.message:String(e));}finally{setLoading(false);}},[projectId]);
+ const loadGroups=useCallback(async()=>{try{setGroups((await apiGet<{groups:Group[]}>(`${base(projectId)}/groups`,60000)).groups);}catch(e){setError(e instanceof Error?e.message:String(e));}},[projectId]);
  useEffect(()=>{void load();},[load]);
+ useEffect(()=>{if(groupsOpen&&!groups.length)void loadGroups();},[groupsOpen,groups.length,loadGroups]);
  useEffect(()=>{if(!res?.state.running)return;const t=setInterval(()=>void load(),4000);return()=>clearInterval(t);},[res?.state.running,load]);
  async function compute(){setError('');try{await apiPost(`${base(projectId)}/compute`,{});await load();}catch(e){setError(e instanceof Error?e.message:String(e));}}
  const toggle=(ks:string[],on:boolean)=>setPicked(p=>{const n=new Set(p);ks.forEach(k=>on?n.add(k):n.delete(k));return n;});
- const byKey=useMemo(()=>new Map(groups.map(g=>[key(g),g])),[groups]);
+ const byKey=useMemo(()=>{
+  const m=new Map<string,Group>();
+  for(const tag of ['auto','suggest'] as const)for(const c of res?.[tag]?.clusters??[])for(const g of c.members)m.set(key(g),g);
+  for(const g of groups)m.set(key(g),g);
+  return m;
+ },[res,groups]);
  const chosen=[...picked].map(k=>byKey.get(k)).filter(Boolean) as Group[];
  const totalImages=chosen.reduce((a,g)=>a+g.images,0);
- async function create(){
+ async function compose(newName:string,members:{job:string;folder:string}[]){
   setBusy(true);setError('');
-  try{const r=await apiPost<{project_id:number;name:string;images:number;groups:number}>(`${base(projectId)}/compose`,{name:name.trim(),members:chosen.map(g=>({job_id:g.job,folder:g.folder}))},'POST',undefined,300000);
-   setCreated(c=>[...c,`${r.name}（${r.groups}グループ・${r.images}枚）`]);setPicked(new Set());setName('');onCreated(r.project_id,r.images);}
+  try{const r=await apiPost<{project_id:number;name:string;images:number;groups:number;instances:{label:string;images:number;trigger:string}[]}>(`${base(projectId)}/compose`,{name:newName,members:members.map(g=>({job_id:g.job,folder:g.folder}))},'POST',undefined,300000);
+   setCreated(c=>[...c,`${r.name}（${r.groups}グループ・${r.images}枚・インスタンス${r.instances?.length??0}種類）`]);setPicked(new Set());setName('');onCreated(r.project_id,r.images);}
   catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}
  }
+ const create=()=>compose(name.trim(),chosen);
+ const proposals=(res?.proposals??[]).map((p,i)=>({...p,rank:i+1}));
+ const sameLook=(a:Proposal,b:Proposal)=>!!a.hair&&!!a.eyes&&a.hair===b.hair&&a.eyes===b.eyes;
  const freq=(c:Cluster)=>c.images*(1+0.25*((c.videos??1)-1));
  const autoClusters=(res?.auto?.clusters??[]).filter(c=>c.groups>1).slice().sort((a,b)=>freq(b)-freq(a));
  const autoKeys=new Set(autoClusters.flatMap(c=>c.members.map(key)));
@@ -65,13 +101,21 @@ export default function CharacterLinkPanel({projectId,onCreated}:{projectId:numb
     <Button disabled={!chosen.length||!name.trim()||busy} onClick={()=>void create()}>{busy?<Spinner/>:null}1つのキャラとして新規プロジェクトを作る</Button>
     <Button size="1" variant="ghost" color="gray" disabled={!picked.size} onClick={()=>setPicked(new Set())}>選択を解除</Button></Flex></div>
 
-  {autoClusters.length>0&&<><Text as="div" size="3" weight="bold" mt="3">LoRAにするキャラの候補（動画をまたいで結合・枚数と出現の多い順）</Text>
+  {proposals.length>0&&<><Text as="div" size="3" weight="bold" mt="3">LoRAの提案（登場の多いキャラ順）</Text>
+   <Text as="p" size="1" color="gray">登場の多いキャラごとに、作るLoRAのデータセット案です。同じ衣装は動画をまたいで1つのインスタンスにまとめます。そのまま作るか、「下で足し引きする」で調整してください。</Text>
+   <div style={{display:'grid',gap:8,marginTop:6}}>{proposals.map(p=><ProposalCard key={p.cluster} pid={projectId} p={p} rank={p.rank} busy={busy}
+    similar={proposals.filter(o=>o.cluster!==p.cluster&&sameLook(o,p))}
+    onCreate={(n,m)=>void compose(n,m)} onAdjust={m=>{setPicked(new Set(m.map(key)));setName(p.name);}}/>)}</div></>}
+  {autoClusters.length>0&&<><Text as="div" size="3" weight="bold" mt="4">動画をまたいだ結合の一覧（調整用）</Text>
    <div style={{display:'grid',gap:8,marginTop:6}}>{autoClusters.map(c=>card(c,'確か','green'))}</div></>}
   {suggestOnly.length>0&&<><Text as="div" size="3" weight="bold" mt="3">要確認の候補（基準を緩めて増えた分）</Text>
    <Text as="p" size="1" color="gray">似た色の別キャラが混ざることがあります。画像を見て、選ぶものだけにチェックを入れてください。</Text>
    <div style={{display:'grid',gap:8,marginTop:6}}>{suggestOnly.map(c=>card(c,'要確認','amber'))}</div></>}
 
-  <details style={{marginTop:14}}><summary style={{cursor:'pointer'}}><Text size="2" weight="medium">すべてのグループから手で選ぶ（{groups.length}）</Text></summary>
+  {loading&&<Flex gap="2" align="center" mt="3"><Spinner/><Text size="2" color="gray">結合の結果を読み込んでいます…</Text></Flex>}
+  {!loading&&res&&!res.auto&&!res.state.running&&<Callout.Root size="1" mt="3"><Callout.Text>まだ結合を計算していません。「結合候補を自動で計算する」を押すと、取り込んだすべての動画をまとめて比べます。</Callout.Text></Callout.Root>}
+  <details style={{marginTop:14}} onToggle={e=>setGroupsOpen((e.currentTarget as HTMLDetailsElement).open)}><summary style={{cursor:'pointer'}}><Text size="2" weight="medium">すべてのグループから手で選ぶ（{groups.length||res?.auto?.metrics.groups||0}）</Text></summary>
+   {groupsOpen&&!groups.length&&<Flex gap="2" align="center" mt="2"><Spinner/><Text size="1" color="gray">一覧を読み込んでいます…</Text></Flex>}
    <div style={{display:'grid',gap:6,marginTop:8}}>{groups.map(g=><Flex key={key(g)} gap="2" align="center" wrap="wrap" style={{minWidth:0}}>
     <Checkbox checked={picked.has(key(g))} onCheckedChange={v=>toggle([key(g)],v===true)} aria-label={`${g.video} ${g.folder}を選ぶ`}/>
     <Text size="1" style={{width:150,overflowWrap:'anywhere'}}>{g.video}<br/><span style={{color:'var(--gray-10)'}}>{g.images}枚・{g.folder.slice(8,34)}</span></Text><Strip pid={projectId} files={g.sample}/></Flex>)}</div></details>

@@ -43,6 +43,33 @@ class Member(BaseModel):
 class ComposePayload(BaseModel):
     name: str
     members: list[Member]
+    min_instance_images: int = 12  # an outfit (same label across videos) needs this many images to become its own instance
+
+
+MIN_INSTANCE_IMAGES = 12
+NO_OUTFIT_LABEL = "衣装不明"
+IMAGE_EXT = (".png", ".jpg", ".jpeg")
+
+
+def _instance_plan(root: Path, members: list[dict], min_images: int) -> tuple[list[dict], int]:
+    """The instances a LoRA built from these groups gets: ONE per outfit label across all videos (an outfit seen in 5 videos is one
+    instance, not 5), only when it has >= min_images; unknown or rare outfits stay character-only images. Returns (instances, other images)."""
+    labels: dict[str, dict] = {}
+    for m in members:
+        base = root / m["job"] / m["folder"]
+        for od in sorted(base.glob("outfit_*")) if base.is_dir() else []:
+            pics = sorted(p for p in od.iterdir() if p.suffix.lower() in IMAGE_EXT)
+            if not pics:
+                continue
+            label = _outfit_label(od.name)
+            e = labels.setdefault(label, {"label": label, "images": 0, "videos": set(), "sample": []})
+            e["images"] += len(pics)
+            e["videos"].add(m["job"])
+            if len(e["sample"]) < 3:
+                e["sample"].append(f"{m['job']}/{m['folder']}/{od.name}/{pics[len(pics) // 2].name}")
+    inst = sorted((e for e in labels.values() if e["label"] != NO_OUTFIT_LABEL and e["images"] >= min_images), key=lambda e: -e["images"])
+    rest = sum(e["images"] for e in labels.values()) - sum(e["images"] for e in inst)
+    return [{**e, "videos": len(e["videos"])} for e in inst], rest
 
 
 def _jobs_root(project_id: int) -> Path:
@@ -149,6 +176,21 @@ def _add_instances(root: Path, data: dict) -> None:
         c["tier"] = "recommended" if c["images"] >= 60 and len(videos) >= 2 else ("candidate" if c["images"] >= 40 else "few")
 
 
+def _proposals(root: Path, clusters: list[dict], limit: int = 12, min_images: int = 40) -> list[dict]:
+    """Ready-to-create LoRA datasets, most frequent characters first: who (the merged groups), how many images, from how many
+    videos, and which instances (merged outfits) it would get."""
+    ranked = sorted((c for c in clusters if c["images"] >= min_images), key=lambda c: -(c["images"] * (1 + 0.25 * (c.get("videos", 1) - 1))))
+    out = []
+    for c in ranked[:limit]:
+        inst, rest = _instance_plan(root, c["members"], MIN_INSTANCE_IMAGES)
+        name = " ".join(x for x in (c.get("hair", ""), c.get("eyes", "")) if x) or f"キャラ{c['id']}"
+        out.append({"cluster": c["id"], "name": name, "images": c["images"], "videos": c.get("videos", 1), "video_names": c.get("video_names", []),
+                    "groups": c["groups"], "hair": c.get("hair", ""), "eyes": c.get("eyes", ""), "members": [{"job": m["job"], "folder": m["folder"]} for m in c["members"]],
+                    "instances": [{k: e[k] for k in ("label", "images", "videos", "sample")} for e in inst], "character_only_images": rest,
+                    "min_instance_images": MIN_INSTANCE_IMAGES})
+    return out
+
+
 @router.get("/result")
 def result(project_id: int):
     root = _jobs_root(project_id)
@@ -158,6 +200,8 @@ def result(project_id: int):
         if p.is_file():
             data[tag] = json.loads(p.read_text(encoding="utf-8"))
             _add_instances(root, data[tag])
+    if "auto" in data:
+        data["proposals"] = _proposals(root, data["auto"]["clusters"])
     with _state_lock:
         st = dict(_state)
     return {"state": st, **data}
@@ -173,19 +217,34 @@ def file(project_id: int, rel: str = Query(..., min_length=1, max_length=1024)):
     return FileResponse(path, media_type="image/png" if path.suffix.lower() == ".png" else "image/jpeg", headers={"Cache-Control": "private, max-age=300"})
 
 
+_groups_cache: dict[str, tuple[float, list]] = {}  # job -> (report mtime, its groups); compose_report walks the folders (~0.3 s/job on OneDrive)
+
+
+def _job_groups(root: Path, job: str) -> list:
+    rp = root / job / "report.json"
+    stamp = rp.stat().st_mtime if rp.is_file() else 0.0
+    hit = _groups_cache.get(job)
+    if hit and hit[0] == stamp:
+        return hit[1]
+    meta = svc.load_json(root / job / "job.json") or {}
+    report = svc.compose_report(root / job) or {}
+    video = Path(str(meta.get("video") or job)).stem
+    rows = [{"job": job, "video": video, "folder": ch["folder"], "images": ch.get("images_total", 0), "sample": [f"{job}/{r}" for r in ch.get("sample_files", [])[:4]],
+             "outfits": [o["folder"] for o in ch.get("outfits", [])]} for ch in report.get("characters", [])]
+    _groups_cache[job] = (stamp, rows)
+    return rows
+
+
 @router.get("/groups")
 def groups(project_id: int):
-    """Every character group of every finished job (for picking by hand)."""
+    """Every character group of the jobs in the current link result (all finished jobs when nothing is linked yet), for picking by hand."""
     root = _jobs_root(project_id)
-    out = []
-    for job in _done_jobs(project_id):
-        meta = svc.load_json(root / job / "job.json") or {}
-        report = svc.compose_report(root / job) or {}
-        video = Path(str(meta.get("video") or job)).stem
-        for ch in report.get("characters", []):
-            out.append({"job": job, "video": video, "folder": ch["folder"], "images": ch.get("images_total", 0), "sample": [f"{job}/{r}" for r in ch.get("sample_files", [])[:4]],
-                        "outfits": [o["folder"] for o in ch.get("outfits", [])]})
-    return {"groups": out}
+    jobs = _done_jobs(project_id)
+    linked = root / "_links_auto.json"
+    if linked.is_file():  # same videos as the shown candidates: never mix in another source folder
+        used = {m["job"] for c in json.loads(linked.read_text(encoding="utf-8")).get("clusters", []) for m in c["members"]}
+        jobs = [j for j in jobs if j in used]
+    return {"groups": [g for job in jobs for g in _job_groups(root, job)]}
 
 
 @router.post("/compose")
@@ -205,29 +264,45 @@ def compose(project_id: int, payload: ComposePayload):
                 raise HTTPException(404, f"グループが見つかりません: {m.job_id}/{m.folder}")
             meta = svc.load_json(jdir / "job.json") or {}
             plan.append((ch, src, Path(str(meta.get("video") or m.job_id)).stem))
+        inst, _rest = _instance_plan(root, [{"job": m.job_id, "folder": m.folder} for m in payload.members], max(1, payload.min_instance_images))
         with dataset_files.database_connection() as conn:
             name = _unique_project_name(conn, safe_project_name(payload.name))
         created = projects.create_project(ProjectCreate(name=name, project_type="character"))
         try:
             new_char = "ch01"
-            counter = 0
-            display_mapping: dict[str, tuple[str, str]] = {}
+            trig = {e["label"]: f"{new_char}_o{i + 1:02d}" for i, e in enumerate(inst)}  # same outfit in every video -> one trigger
             total = 0
             dest_root = Path(created.dataset_dir)
             for ch, src, video in plan:
-                mapping: dict[str, tuple[str, str]] = {}
-                for o in ch.get("outfits", []):
-                    counter += 1
-                    mapping[o["folder"]] = (o["trigger"], f"{new_char}_o{counter:02d}")
-                    display_mapping[f"{video}_{o['folder']}"] = mapping[o["folder"]]
-                _dest, count = _copy_character(src, dest_root, ch, new_char, mapping, flatten=True, folder_name=ch["folder"])
-                total += count
+                outfit_trigger = {o["folder"]: o["trigger"] for o in ch.get("outfits", [])}
+                for od in sorted(d for d in src.iterdir() if d.is_dir()):
+                    label = _outfit_label(od.name)
+                    new_o = trig.get(label, "")
+                    target = dest_root / (f"{new_o}_{label.replace(' ', '-')}" if new_o else "キャラのみ（衣装インスタンスなし）")
+                    target.mkdir(parents=True, exist_ok=True)
+                    old_o = outfit_trigger.get(od.name)
+                    for f in sorted(p for p in od.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXT):
+                        stem = f"{video}_{f.stem}"  # several videos land in one folder: keep names unique and traceable
+                        shutil.copy2(f, target / f"{stem}{f.suffix.lower()}")
+                        total += 1
+                        cap = f.with_suffix(".txt")
+                        if cap.is_file():
+                            tokens = cap.read_text(encoding="utf-8-sig").split(", ")
+                            if tokens and tokens[0].strip() == ch["trigger"]:
+                                tokens[0] = new_char
+                            if len(tokens) > 1 and old_o and tokens[1].strip() == old_o:
+                                if new_o:
+                                    tokens[1] = new_o
+                                else:
+                                    del tokens[1]  # rare/unknown outfit: no outfit trigger at all
+                            (target / f"{stem}.txt").write_text(", ".join(tokens), encoding="utf-8", newline="")
             ch0 = plan[0][0]
             with dataset_files.database_connection() as conn:
-                concepts = _register_concepts(conn, created.id, {**ch0, "trigger": ch0["trigger"]}, new_char, display_mapping, name)
+                concepts = _register_concepts(conn, created.id, {**ch0, "trigger": ch0["trigger"]}, new_char, {label: ("", t) for label, t in trig.items()}, name)
         except Exception:
             with dataset_files.database_connection() as conn:
                 conn.execute("DELETE FROM projects WHERE id=?", (created.id,))
             shutil.rmtree(Path(created.base_dir), ignore_errors=True)
             raise
-    return {"project_id": created.id, "name": name, "images": total, "groups": len(plan), "concepts": concepts}
+    return {"project_id": created.id, "name": name, "images": total, "groups": len(plan), "concepts": concepts,
+            "instances": [{"label": e["label"], "images": e["images"], "trigger": trig[e["label"]]} for e in inst]}

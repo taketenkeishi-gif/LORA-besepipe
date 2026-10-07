@@ -356,16 +356,17 @@ class VideoDatasetJobTests(unittest.TestCase):
         from app.routers import dataset_video_link as link
         # a second finished job with the SAME looking character under another folder
         job2 = self.root.parent / ".video-datasets" / "b2c3d4e5f6071829"
-        folder = job2 / "char_07_blue-hair" / "outfit_01_dress"
+        # the SAME outfit (school uniform) also appears in the second video
+        folder = job2 / "char_07_blue-hair" / "outfit_01_school-uniform"
         folder.mkdir(parents=True)
         for n in ("w_s0001_a", "w_s0002_a"):
             Image.new("RGB", (8, 8), "blue").save(folder / f"{n}.png")
-            (folder / f"{n}.txt").write_text("ch07, ch07_o01, 1girl, blue hair, dress", encoding="utf-8")
+            (folder / f"{n}.txt").write_text("ch07, ch07_o01, 1girl, blue hair, school uniform", encoding="utf-8")
         (job2 / "report.json").write_text(json.dumps({"video": "w.mp4", "images_written": 2, "unassigned_images": 0, "characters": [
             {"folder": "char_07_blue-hair", "trigger": "ch07", "crops": 2, "views": {}, "outfits": [
-                {"folder": "outfit_01_dress", "trigger": "ch07_o01", "images": 2, "dropped_duplicates": 0, "top_clothing": ["dress"]}]}]}), encoding="utf-8")
+                {"folder": "outfit_01_school-uniform", "trigger": "ch07_o01", "images": 2, "dropped_duplicates": 0, "top_clothing": ["school uniform"]}]}]}), encoding="utf-8")
         (job2 / "job.json").write_text(json.dumps({"job_id": "b2c3d4e5f6071829", "project_id": self.pid, "status": "done", "video": "w.mp4", "params": {}, "output_dir": str(job2)}), encoding="utf-8")
-        out = link.compose(self.pid, link.ComposePayload(name="Blue girl", members=[
+        out = link.compose(self.pid, link.ComposePayload(name="Blue girl", min_instance_images=1, members=[
             link.Member(job_id=self.job_id, folder="char_01_blue-hair"), link.Member(job_id="b2c3d4e5f6071829", folder="char_07_blue-hair")]))
         self.assertEqual((out["groups"], out["images"]), (2, 6))
         conn = self.db.get_conn()
@@ -373,7 +374,16 @@ class VideoDatasetJobTests(unittest.TestCase):
         conn.close()
         concepts = self._concepts(out["project_id"])
         self.assertEqual(sum(c[1] == "character" for c in concepts), 1)          # ONE character...
-        self.assertEqual(sum(c[1] == "outfit" for c in concepts), 3)             # ...three instances (2 outfits of the first + 1 of the second)
+        self.assertEqual(sum(c[1] == "outfit" for c in concepts), 1)             # ...ONE uniform instance across both videos; unknown outfit = character only
+        self.assertEqual([(i["label"], i["trigger"]) for i in out["instances"]], [("school uniform", "ch01_o01")])
+        merged = dataset / "ch01_o01_school-uniform"
+        self.assertEqual(len(list(merged.glob("*.png"))), 5)                       # 3 uniform images of video 1 + 2 of video 2 in one folder
+        for t in merged.glob("*.txt"):
+            self.assertEqual(t.read_text(encoding="utf-8").split(", ")[:2], ["ch01", "ch01_o01"])
+        for t in (dataset / "キャラのみ（衣装インスタンスなし）").glob("*.txt"):
+            toks = t.read_text(encoding="utf-8").split(", ")
+            self.assertEqual(toks[0], "ch01")
+            self.assertFalse(any(x.strip() == "" or x.startswith("ch01_o") or x.startswith("ch07_o") for x in toks), toks)  # no outfit trigger, no empty token
         tokens = [c[2] for c in concepts]
         self.assertEqual(len(tokens), len(set(tokens)), tokens)
         captions = [t.read_text(encoding="utf-8").split(", ")[0] for t in dataset.rglob("*.txt")]
