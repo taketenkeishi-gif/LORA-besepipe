@@ -59,6 +59,7 @@ ap.add_argument("--rescue-quantile", type=float, default=0.55, help="leftover cr
 ap.add_argument("--yolo-conf", type=float, default=0.25, help="person detector confidence floor (lower finds more anime figures, and more false ones)")
 ap.add_argument("--cascade-margin", type=float, default=0.8, help="a leftover joins a character only if it beats the runner-up character by this much (z-score units)")
 ap.add_argument("--early-dup-bits", type=int, default=1, help="skip a crop BEFORE the heavy steps when its small-image hash differs from the previous kept crop of the same track by at most this many bits (0 = off)")
+ap.add_argument("--hwdec", default="none", help="ffmpeg -hwaccel for frame choice decoding (e.g. d3d11va); none = CPU. Measured on 30話: not faster (77 s vs 75 s) and pixels differ, so CPU stays the default")
 ap.add_argument("--refine", choices=["mask", "birefnet"], default="mask", help="how to tighten a single-person crop: YOLO's person mask (fast) or the BiRefNet matte")
 ap.add_argument("--start-seconds", type=float, default=0.0, help="process only this region of the video (a bucket): from here")
 ap.add_argument("--end-seconds", type=float, default=0.0, help="...up to here (0 = to the end). File names / timestamps stay ABSOLUTE video time")
@@ -184,6 +185,7 @@ def burst(tag: str, t: float):
     return images[:3] if len(images) >= 3 else [images[0], images[1], images[1]]
 
 
+CANDIDATE_OFFSETS = (0.0, 0.07, -0.07, 0.14)
 _FPS = re.compile(r"Video:.*?(\d+(?:\.\d+)?) fps")
 _vfps = [None]
 
@@ -202,7 +204,10 @@ def scene_bursts(start: float, end: float, wanted: list[float]):
     fps = video_fps()
     lo, hi = min(wanted) - 0.08, max(wanted) + 0.15
     s = max(start, lo)
-    proc = subprocess.Popen([ffmpeg, "-hide_banner", "-loglevel", "error", "-ss", f"{s:.3f}", "-t", f"{max(0.05, hi - s) + 4 / fps:.3f}", "-i", str(video),
+    # NOTE: filtering frames inside ffmpeg (select=between(n,..)) was tried: 75 s -> 64 s on 30話 but n does not match
+    # the post-seek frame index, so different frames were picked (90/860 outputs identical). Keep streaming every frame.
+    hw = ["-hwaccel", args.hwdec] if args.hwdec != "none" else []
+    proc = subprocess.Popen([ffmpeg, "-hide_banner", "-loglevel", "error", *hw, "-ss", f"{s:.3f}", "-t", f"{max(0.05, hi - s) + 4 / fps:.3f}", "-i", str(video),
                              "-f", "image2pipe", "-vcodec", "bmp", "-"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     buf: dict[int, Image.Image] = {}
     nxt = [0]
@@ -252,7 +257,7 @@ def choose_frames(item):
     streamed = scene_bursts(start, end, times) if video_fps() > 0 else None
     for k, t0 in enumerate(times):
         grab = next(streamed) if streamed is not None else None
-        for attempt, dt in enumerate((0.0, 0.07, -0.07, 0.14)):  # a neighbouring frame is usually fine when this one is damaged
+        for attempt, dt in enumerate(CANDIDATE_OFFSETS):  # a neighbouring frame is usually fine when this one is damaged
             t = min(max(start, t0 + dt), max(start, end - 0.05))
             b = grab(t) if grab is not None else burst(f"s{i:04d}_{k}_{attempt}", t)
             if b is None:
