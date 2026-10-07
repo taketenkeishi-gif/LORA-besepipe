@@ -1,0 +1,561 @@
+{
+  "source": "C:\\Users\\Keishi\\Portfolio\\Generation\\Training\\LoRA-Trainer\\worktrees\\ui-refresh",
+  "source_commit": "0024b3211499480734088b0adda728161c2956e5",
+  "copy": "C:\\Users\\Keishi\\Portfolio\\Generation\\Training\\LoRA-Studio-Next",
+  "files": [
+    {
+      "path": "backend/app/db.py",
+      "sha256": "71f64c28568e17d8f2137aadf50c090b15b4d520c320003fa9bdf9d56f1bee28"
+    },
+    {
+      "path": "backend/app/main.py",
+      "sha256": "1da144b0768789d59ec0339cb01faab7e6815f15cfbede5c7ddc6bdf0825f642"
+    },
+    {
+      "path": "backend/app/schemas.py",
+      "sha256": "6e74e32c4590dd1cf7ce6ce819f291677279fbb86746bd25df5b7ddce4f9cc8b"
+    },
+    {
+      "path": "backend/app/__init__.py",
+      "sha256": "b35a46a8050a5bc3a2e2795049001b9f6ccddde47da42b5e354eca8512239527"
+    },
+    {
+      "path": "backend/app/dataset/__init__.py",
+      "sha256": "c1edb51d8f2aabc22eb500a580f350bf2d880ce4cd6e258c4e94cc7bc7aef0ad"
+    },
+    {
+      "path": "backend/app/dataset/pipeline/base.py",
+      "sha256": "242bffb588e27c9a5482aca9402583be5d92d6a01f669c630b053dcb51fc3ef9"
+    },
+    {
+      "path": "backend/app/dataset/pipeline/queue.py",
+      "sha256": "25154055a96d5a48608ad9ee08b07f541de18f1916d4e61dd71fe6c78a77f957"
+    },
+    {
+      "path": "backend/app/dataset/pipeline/runner.py",
+      "sha256": "20b29d835a2e869cd6011b8a452c55c27b85ba35b56a0bcc91fd94d4fd9ab412"
+    },
+    {
+      "path": "backend/app/dataset/pipeline/__init__.py",
+      "sha256": "ebf1580d89bee30c8e91e8152e4d92ebdca7e0c26b9f78aa76824c7df0cc88c1"
+    },
+    {
+      "path": "backend/app/dataset/pipeline/steps/caption.py",
+      "sha256": "62a8dd489d166ea7ab58a7a9a596ab85f0f7d0a4cf2677940881508e0471af3e"
+    },
+    {
+      "path": "backend/app/dataset/pipeline/steps/cleanup.py",
+      "sha256": "063433e97e71f798eef658e69a9da4e7c4eb0111cc887ada9981ecbaa7d54418"
+    },
+    {
+      "path": "backend/app/dataset/pipeline/steps/resize.py",
+      "sha256": "18b17cfeacc67d37ded5c2b872e3afa9ac7c198ffc4c60e9302b8c5a1f2d34df"
+    },
+    {
+      "path": "backend/app/dataset/pipeline/steps/save.py",
+      "sha256": "3a99054e1318bd9b557d60157bad5c0f143f763745c0cc54d864e4f2f70d0de4"
+    },
+    {
+      "path": "backend/app/dataset/pipeline/steps/upscale.py",
+      "sha256": "5aa25947bcf8dff491de62640f78027c4b158565891a885f39f2e0e260796f90"
+    },
+    {
+      "path": "backend/app/dataset/pipeline/steps/__init__.py",
+      "sha256": "7c60030375f1578af3ef6d46f9795bfd75deec597fa6c61a3174d8d73e88f7ad"
+    },
+    {
+      "path": "backend/app/preview/base.py",
+      "sha256": "25bbc4a2cfa113a4578065d2b3546082933d3dc041657718f1329721b5ed0622"
+    },
+    {
+      "path": "backend/app/preview/registry.py",
+      "sha256": "945f50d0cfd7fa5e02ead4a41d85f21352b949bb03ec9876f5ac02118050477c"
+    },
+    {
+      "path": "backend/app/preview/__init__.py",
+      "sha256": "738de852e4bb39085cfd27963d3322a2643d38fd10d06953a979b8dae81b245d"
+    },
+    {
+      "path": "backend/app/preview/providers/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/app/preview/providers/comfyui/provider.py",
+      "sha256": "4099080cb5ea8a784493bcff665c7f255edd44348c68a78223bf4f4b2fb700ff"
+    },
+    {
+      "path": "backend/app/preview/providers/comfyui/__init__.py",
+      "sha256": "cb6d8998451a67c537cf846f757a51802ff615549bd93bbc5bb0df9ac89852e4"
+    },
+    {
+      "path": "backend/app/preview/providers/musubi/__init__.py",
+      "sha256": "0aa762589ce33c7c881c6680c534d39b90b9a5d4c807ecd827747bc4289e6762"
+    },
+    {
+      "path": "backend/app/preview/providers/shared/__init__.py",
+      "sha256": "d068235c5029227b51e79d6642e5a4522a2a6013f0d943e74de432a671335811"
+    },
+    {
+      "path": "backend/app/routers/basepipe.py",
+      "sha256": "209b6f53a6b2392fb0e5c97a3090337ec8036677bd3498fb60a64c643ec36d99"
+    },
+    {
+      "path": "backend/app/routers/collector.py",
+      "sha256": "0cc9d75cff9878c39caca048de04cc62cefeccae26530d5527f1160c2a25610a"
+    },
+    {
+      "path": "backend/app/routers/dataset.py",
+      "sha256": "30c424935be16bf24af4538dcce62c5349e9ee3981181a138b785270fc08b4a4"
+    },
+    {
+      "path": "backend/app/routers/dataset_files.py",
+      "sha256": "341634e571e77c8a9a72ac3eb1f68d8eea792c5bb891fb78f715aa2f213b6ca4"
+    },
+    {
+      "path": "backend/app/routers/debug.py",
+      "sha256": "5ead4f468180c2c2e42ec1e4cfcfebe7df2dd898317aa4634cc1cf92e34af62e"
+    },
+    {
+      "path": "backend/app/routers/imgsearch.py",
+      "sha256": "2770e1cc4718e705a87f6d7184757d43ebcc181734cbc4b72f29fa08b3f1a07f"
+    },
+    {
+      "path": "backend/app/routers/library.py",
+      "sha256": "5d72fb3e3736ecbf35a9c207d3c3c4730e652bbf60c80a01cf134a1b5b9847bb"
+    },
+    {
+      "path": "backend/app/routers/presets.py",
+      "sha256": "78018d8f97b4d821dc067a726bea915664ce08bc9c4dd95055a61b05b5805cef"
+    },
+    {
+      "path": "backend/app/routers/previews.py",
+      "sha256": "0acf7e8604c43f5aac3abb25f108af6ea264da5e7b217fe46f3e9761237fc6d9"
+    },
+    {
+      "path": "backend/app/routers/preview_profiles.py",
+      "sha256": "2f49e571224c3099e709afefe7844bfd21d6fd0fa3db10046398008e8dab71a2"
+    },
+    {
+      "path": "backend/app/routers/projects.py",
+      "sha256": "be7ef8f61c7e51ec1858402a9724a1ff80c7da6b91d0e2215e30dab57696f10b"
+    },
+    {
+      "path": "backend/app/routers/project_file.py",
+      "sha256": "3411c2c6de8bc4fac4834691bb63a35bb23088a921a723baaf4cfca20233255e"
+    },
+    {
+      "path": "backend/app/routers/settings.py",
+      "sha256": "a51dbd7e5df7e55492ba23fcfcaf5b88a40ad5faadaa04abdd4a7a3e6d10b505"
+    },
+    {
+      "path": "backend/app/routers/system.py",
+      "sha256": "118a69ea973884833c36d4d194ba7b82a4341345abe2bd3b2b208015ceee49a1"
+    },
+    {
+      "path": "backend/app/routers/tags.py",
+      "sha256": "5dfdbd7f947fece39442aa674ed0566a874874513b5047bb34c4fb873ad03cdc"
+    },
+    {
+      "path": "backend/app/routers/training.py",
+      "sha256": "48c80320a270d0cc24c5b0967c3aa024063a9b1b1c15cf9b6ce6ddf61b04f558"
+    },
+    {
+      "path": "backend/app/routers/__init__.py",
+      "sha256": "b35a46a8050a5bc3a2e2795049001b9f6ccddde47da42b5e354eca8512239527"
+    },
+    {
+      "path": "backend/app/services/browser_scraper.py",
+      "sha256": "a6d09600ea7d06e901736fb022bb971615657e564bd0452e0adb9efb0fbe089d"
+    },
+    {
+      "path": "backend/app/services/character_enhancement.py",
+      "sha256": "b12655aa73d66132f158fec038b754e32a71673aa948c9ec547115b7385d74ba"
+    },
+    {
+      "path": "backend/app/services/comfyui_client.py",
+      "sha256": "9262a34419740c5207fc70eac008fde0ad3df9b46381db894e325791583b5133"
+    },
+    {
+      "path": "backend/app/services/comfyui_process.py",
+      "sha256": "d6d2e75ad63f08f2667a5bbd27795fc3d5ea22b1ba5a7b295ef762e6bdf726bd"
+    },
+    {
+      "path": "backend/app/services/h3_dataset.py",
+      "sha256": "79a8e18a1758bf0196f516732df87628d5993026b527ac28692e435fd831da26"
+    },
+    {
+      "path": "backend/app/services/image_quality.py",
+      "sha256": "b52e6b699327ce5ca3ab2a2ecde0452117f44e5891f05b8cbe27a4ab22d5e172"
+    },
+    {
+      "path": "backend/app/services/image_search.py",
+      "sha256": "7a222d8b34dbf26ec477f52760cef8eee9b3781341cc0f22e0c1325f1039bc9f"
+    },
+    {
+      "path": "backend/app/services/pixiv_auth.py",
+      "sha256": "d488878207c51ebb82ed63f7cd4d5e6baff6c097052f9cc6da18768563291cb3"
+    },
+    {
+      "path": "backend/app/services/preview_prompts.py",
+      "sha256": "1c5c2193b9decaafe269c3a063b2283a60f7dda64530bafbb126a22203179b27"
+    },
+    {
+      "path": "backend/app/services/tagger.py",
+      "sha256": "96696f239bf8cb63d904ee7bfeb0b2fff529e925367cdf862d59063f8e6a6769"
+    },
+    {
+      "path": "backend/app/services/tag_categories.py",
+      "sha256": "9c9abaa316923a2be0f12cdbcfd857183850339e3b3263f9e3418e1d71e80e8b"
+    },
+    {
+      "path": "backend/app/services/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/app/trainers/base.py",
+      "sha256": "9dfe2e1c5cac94a34e4c2af0b977fe29c99311124ea9f3c17385d468e52dfed1"
+    },
+    {
+      "path": "backend/app/trainers/registry.py",
+      "sha256": "81542ae1525c5cc266461bf89b47079de76f5e0a7de580e97b5be047687d5637"
+    },
+    {
+      "path": "backend/app/trainers/runners.py",
+      "sha256": "15aec97814e90c521688d4122098d4afbed08245ab8e308051882b78e0edb193"
+    },
+    {
+      "path": "backend/app/trainers/__init__.py",
+      "sha256": "39ad7ad5507298639f9aa7b8ffe76bcd0fb83bada79c04d8ff3b09788744de89"
+    },
+    {
+      "path": "backend/app/trainers/specs/anima.py",
+      "sha256": "06a15d9d425a87b103e66005e54668c16b76ea4ac3b1d459778352475562d432"
+    },
+    {
+      "path": "backend/app/trainers/specs/flux.py",
+      "sha256": "7359345ab10d9ee9e3e4d7e4c0e91f43b0ae7560c3fa04e13d7b6056b1001233"
+    },
+    {
+      "path": "backend/app/trainers/specs/hunyuanvideo.py",
+      "sha256": "3d5ba00c5a03d134156e807bb2b5de45c2c39afa33782a6ed4d8fd4aff9e06e1"
+    },
+    {
+      "path": "backend/app/trainers/specs/krea2.py",
+      "sha256": "12524cd14fe147e3366427cd2d92bb3b524cfd61dc18333080a4a7603d36f139"
+    },
+    {
+      "path": "backend/app/trainers/specs/qwen_image.py",
+      "sha256": "ba4bbf23c64587a9c8a49cd34253a3adce112944a882d1c87332aeba92bb9d08"
+    },
+    {
+      "path": "backend/app/trainers/specs/qwen_image_edit.py",
+      "sha256": "2e488ba724614b5599f53bc60af211c8bf01923d412d0f749f5a02a12236ad3b"
+    },
+    {
+      "path": "backend/app/trainers/specs/sd.py",
+      "sha256": "f057c259a3902d38b88aa6acaaede1c468edf1ac9de71b56705a1036b66c286f"
+    },
+    {
+      "path": "backend/app/trainers/specs/sdxl.py",
+      "sha256": "1600448c60111a6a4af0907c163b906ea43c915d69aa8038ea0b00d0aa6406e8"
+    },
+    {
+      "path": "backend/app/trainers/specs/wan21.py",
+      "sha256": "66426361fea02b83f3af88202b77af0014f64ec21600bc45129725d9dfd2b7f1"
+    },
+    {
+      "path": "backend/app/trainers/specs/zimage.py",
+      "sha256": "47e38681b76466a1b8eae543516c8fe51415a248965e1e8f61dc186e0dda2861"
+    },
+    {
+      "path": "backend/app/trainers/specs/__init__.py",
+      "sha256": "b496a5c198afdf5558f8595d9072b86c2b4375dfe81454c89eda10db1142aa32"
+    },
+    {
+      "path": "backend/app/training/base.py",
+      "sha256": "b3eb1b1fff1870d59b0e4579889e4a6abbb536c80ca855d5ca0f4a32b40cbbdb"
+    },
+    {
+      "path": "backend/app/training/registry.py",
+      "sha256": "2941a6b73ca551dfd2053df8b65c4feaeb74584d05e0cccfc2aca4e498be1544"
+    },
+    {
+      "path": "backend/app/training/snapshot_inputs.py",
+      "sha256": "dceeb29b68124b99a222e138b7fd2e40fad8be95c6abf8669e99bde45642ec7c"
+    },
+    {
+      "path": "backend/app/training/__init__.py",
+      "sha256": "20a1cd329a17210fb19b2437127354b72ab52a82f1429ecfaccf7e993ad8305e"
+    },
+    {
+      "path": "backend/app/training/backends/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "backend/app/training/backends/ai_toolkit/backend.py",
+      "sha256": "770fc26b315d1dd906967affafec88fe7091721a9842180edc5f6de077883245"
+    },
+    {
+      "path": "backend/app/training/backends/ai_toolkit/__init__.py",
+      "sha256": "b6eb0b6259e9f8e0f04d8e286d41ab86ee65057f86062d0f6e139a700910e983"
+    },
+    {
+      "path": "backend/app/training/backends/anima/backend.py",
+      "sha256": "a70b836fb82d691eb36bede86bd8f10bf04ad618032c10303433840a26204b35"
+    },
+    {
+      "path": "backend/app/training/backends/anima/__init__.py",
+      "sha256": "b1d46d239e63f78aa35f27bab4d5092863d57e48d1945aa3d741bd7ba2fd913e"
+    },
+    {
+      "path": "backend/app/training/backends/musubi/backend.py",
+      "sha256": "9810589f57c6e158419aa1481441cd4cd8e110773c528b55b44957a9ee246ae3"
+    },
+    {
+      "path": "backend/app/training/backends/musubi/__init__.py",
+      "sha256": "a762d334fc4f962213e0bbf1c3b8f86a24b7d13e747988f69ff8b582abb8247d"
+    },
+    {
+      "path": "backend/app/training/backends/sdxl/backend.py",
+      "sha256": "baa0fa5b3f4a58618deebd564db6ee461ddc22bc1a5f375fa1b690b4caba2f1f"
+    },
+    {
+      "path": "backend/app/training/backends/sdxl/__init__.py",
+      "sha256": "003365c0c3e44017d4f274d39de6d279ab1ab0be6efcde6c5bddaf04db53991c"
+    },
+    {
+      "path": "backend/app/training/backends/shared/helpers.py",
+      "sha256": "a0a36600989b88bf790a2708e58e3720fb268697916679dc7b2b5084c77310d6"
+    },
+    {
+      "path": "backend/app/training/backends/shared/__init__.py",
+      "sha256": "9e3f44f18a8c0131c9d08de922776ea7bffa1f7888f8f0687755e126b702fc6f"
+    },
+    {
+      "path": "backend/app/training/backends/simulated/backend.py",
+      "sha256": "e2097cff81edb569deb808a988a89259eb2ae7503b6fd3ba08e09afb10fd6452"
+    },
+    {
+      "path": "backend/app/training/backends/simulated/__init__.py",
+      "sha256": "7a4c7c21aeccca3fb5a4c4605c627a88bcaeb26be6624488b902b94dcb8a29ee"
+    },
+    {
+      "path": "backend/app/training/runtime/artifact_validation.py",
+      "sha256": "814b7e643b97f2c25e700af4298dccac9a3eeb783a4acb2a0b71fdb7acdc733e"
+    },
+    {
+      "path": "backend/app/training/runtime/estimation.py",
+      "sha256": "aa3f688fe8377137a74ecee7389bf2431b7245bd849140408e82096638eb2ee2"
+    },
+    {
+      "path": "backend/app/training/runtime/evidence.py",
+      "sha256": "92e6efdcd06fbff68622e59a8e4c77b5102d418b1a621473516ca7c617b8ba74"
+    },
+    {
+      "path": "backend/app/training/runtime/gpu_mapping.py",
+      "sha256": "a286fd062f816806b0fdbc7a45113085a8134d3c98a726d8ac13f4da78baeff2"
+    },
+    {
+      "path": "backend/app/training/runtime/log_parser.py",
+      "sha256": "4a96503a70beaba330f6296bdc155fc5e62c8d29a6bb7f23f39626d4fb5dcfbb"
+    },
+    {
+      "path": "backend/app/training/runtime/lora_export.py",
+      "sha256": "32f4aae82902c1e08ba55c79d43bf1842f5521180d7d3cbc67db996d2ae8a177"
+    },
+    {
+      "path": "backend/app/training/runtime/monitor.py",
+      "sha256": "1b38832f73ce01a1e3c15fe28f800ec2f6c16c25fb48010be1e00903d209dfe3"
+    },
+    {
+      "path": "backend/app/training/runtime/preview_jobs.py",
+      "sha256": "21e9ebdc9d93356a1861d1c5f9ddf2412fb3e88d74b09f1e7a5fa8cd79797419"
+    },
+    {
+      "path": "backend/app/training/runtime/queue.py",
+      "sha256": "28035f36000fc2b719c92fbfdd1fd64daba976a791388ea858cd7fd797764ef3"
+    },
+    {
+      "path": "backend/app/training/runtime/stages.py",
+      "sha256": "67d9edc8e56dd749265210a3b2277dd8eb4d569d0e020169dca4cfb567283999"
+    },
+    {
+      "path": "backend/app/training/runtime/state.py",
+      "sha256": "5e10bf03b3c867cda1ba7b658d134a5e2f82fb1dae2a3b8d659aa4e0ea5a4850"
+    },
+    {
+      "path": "backend/app/training/runtime/__init__.py",
+      "sha256": "6b65641fab152fd6471683ec3c83f9a25a42b3823a1a2075392ec9fcebfbd697"
+    },
+    {
+      "path": "frontend/src/App.tsx",
+      "sha256": "0ad70c4386a64f802f5d122684012f334a3af1c3083a6d55ee5a3570ad84dbe1"
+    },
+    {
+      "path": "frontend/src/main.tsx",
+      "sha256": "a67912abe898731ed9aa79b57133899e9d3dcbd76b7b3c04a02ec7b2fc9e1377"
+    },
+    {
+      "path": "frontend/src/styles.css",
+      "sha256": "2bf0813482ee9d9154cd46a1882e4f754a5d5962ba7a6711d325e90794130adf"
+    },
+    {
+      "path": "frontend/src/app/router.ts",
+      "sha256": "4cd5cdb5272201abb8898f6f4388f90a45fd4cf190544dc9c3e0b8c88a4fc7e5"
+    },
+    {
+      "path": "frontend/src/components/BasepipePanel.tsx",
+      "sha256": "cb015cba52d05d07911f6a644463846a3ec27d4637f24d6367ad6441f7285560"
+    },
+    {
+      "path": "frontend/src/components/Compare.tsx",
+      "sha256": "65c1be3446ed9794a12b44f77fe4aa766493182eb52356bf82276e99d0698564"
+    },
+    {
+      "path": "frontend/src/components/Dashboard.tsx",
+      "sha256": "99ba5bbb59f4cdcafb05b5cf0f7eb16fc777096ee66f4b148e7090ae3f047d02"
+    },
+    {
+      "path": "frontend/src/components/Dataset.tsx",
+      "sha256": "282b611280b2f377a419f6f23b55fc90b8cc355ab6ab8fce062f9715297cc127"
+    },
+    {
+      "path": "frontend/src/components/Home.tsx",
+      "sha256": "7a0c83710118bde40d246faddf5199fc0be4b1a1994ef9d906de7bae0df2de4d"
+    },
+    {
+      "path": "frontend/src/components/Integrations.tsx",
+      "sha256": "8345f8ebd7ca78a2113b9128c11f015f42b13cabc21d26a177e794de38b9ae0e"
+    },
+    {
+      "path": "frontend/src/components/Layout.tsx",
+      "sha256": "467cf269de96fb5ffe9db1bcf29417479fd4434c1a5a1f8c90f3ff9b75b2afe8"
+    },
+    {
+      "path": "frontend/src/components/Library.tsx",
+      "sha256": "5392c71bce04afcaa808c05715b98870642451cb3e293eaba01bc6453aa4fe1f"
+    },
+    {
+      "path": "frontend/src/components/Overview.tsx",
+      "sha256": "e3bd6d8bffb90d4102baec976d264d57170bdb014c7fa624941329df5545353d"
+    },
+    {
+      "path": "frontend/src/components/Projects.tsx",
+      "sha256": "df0bf79bfe4c2331c8833f2f0c8c1a350d11a35271ebba6606087bb284a0674f"
+    },
+    {
+      "path": "frontend/src/components/Runs.tsx",
+      "sha256": "2f0f1e8566ee8cbd93092390816f27cc84a8ecca94d12df989df585dab0586d0"
+    },
+    {
+      "path": "frontend/src/components/Training.tsx",
+      "sha256": "f34bd79b2aa57bbcbbe175d89c21b67c145c031a802e5f1372a797667520302e"
+    },
+    {
+      "path": "frontend/src/components/TrainPage.tsx",
+      "sha256": "83b6b850a520c34e65dc8303cac6137738e4f88f601f671d11769b1220cffd37"
+    },
+    {
+      "path": "frontend/src/features/reproduction/ReproductionPages.tsx",
+      "sha256": "085dc00ad7892bd7d21ec0665ae06ee0019588ac3f8a54f0b30002ae30f134e4"
+    },
+    {
+      "path": "frontend/src/features/studio/CharacterDatasetFactory.tsx",
+      "sha256": "77b5c3b871faf5afc6168e17b80f2d763bdc29a75a6b2656f4a57aa4bcca22f1"
+    },
+    {
+      "path": "frontend/src/features/studio/dataset-files.css",
+      "sha256": "0d0f66561515a7c1e06ef65ce3532f49b666e9e1240f1038845984fb06b5c1a3"
+    },
+    {
+      "path": "frontend/src/features/studio/DatasetFiles.tsx",
+      "sha256": "71b36dd8c7ca3332b5db9dd18da57cf40cf9d896d58625a160f3528561a1e100"
+    },
+    {
+      "path": "frontend/src/features/studio/EvaluateWorkspace.tsx",
+      "sha256": "23a06a29c30d8f9a9c4fa97ddb1c90bbd68fcbf9739c1e63d641ef39646ef224"
+    },
+    {
+      "path": "frontend/src/features/studio/LibraryWorkspace.tsx",
+      "sha256": "30921ee8d9abd3972942b7019a3b98a0bbbc372364bc9612c75fb7b8b028888d"
+    },
+    {
+      "path": "frontend/src/features/studio/PrepareWorkspace.tsx",
+      "sha256": "bd851fd00db32db6d293afafcf70eafdc94ebd731d528b486e590ecb8b126163"
+    },
+    {
+      "path": "frontend/src/features/studio/ProjectHome.tsx",
+      "sha256": "778c8bb57bd5908b09e6927d0921a50bf5f0864e3953ef61e37a78de723f1740"
+    },
+    {
+      "path": "frontend/src/features/studio/StudioShell.tsx",
+      "sha256": "6faa7f46b2e1c981910b4603511e0f6aecaf2475c15d19efce31dce4d499b93c"
+    },
+    {
+      "path": "frontend/src/features/studio/TrainingDock.tsx",
+      "sha256": "7cf4065728a89731ca73627b0decd9c070adb909dcf871eac4bd1e268d058b7b"
+    },
+    {
+      "path": "frontend/src/features/studio/TrainWorkspace.tsx",
+      "sha256": "5f82b670dbe6ec2f39f981897229312bbde270fc7cf5c840feae194492d3281f"
+    },
+    {
+      "path": "frontend/src/features/studio/useDatasetDrag.ts",
+      "sha256": "d3552c827fe5e9314514c8fec8de7bf7fde94129508220ae7a95d61ab04e2ffd"
+    },
+    {
+      "path": "frontend/src/features/studio/workbench.css",
+      "sha256": "8c9a72f55cbc4d8844c7377c615e0d9fb3d7231a2ea8ff2869a5764dc11995db"
+    },
+    {
+      "path": "frontend/src/features/studio/Workbench.tsx",
+      "sha256": "d1f2a514ca86bc712e27d14f7d000519dc169959973e46537e7f78eaf4ed1707"
+    },
+    {
+      "path": "frontend/src/features/studio/workbenchTypes.ts",
+      "sha256": "859ba1c3c97da9e590c5c8d320fd1825e06c91fbe8909fd4a45b9d414bd2eac9"
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "sha256": "5e93099da2593e27e11eae7eed306370614f5365c2041f097a4a8d684e7b96b0"
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "sha256": "98fc5966f1db44a8df8eb861b243a427ed7b86bcc09117a510aad2015269993e"
+    },
+    {
+      "path": "frontend/src/types/index.ts",
+      "sha256": "acf17ff589c30ea9fcf52bf2fe602df6996cd46b5a1df223545e944c7e0fa139"
+    },
+    {
+      "path": "frontend/dist/favicon.svg",
+      "sha256": "f96ff95653e460e301deaaec761547a82ba2bdc29479755436d168772cbe11a2"
+    },
+    {
+      "path": "frontend/dist/index.html",
+      "sha256": "06e742c3da4449db79cc1c12661fcf2849841c59b38c4989358272fdbc447ac5"
+    },
+    {
+      "path": "frontend/dist/assets/index-B1vwD4Xd.js",
+      "sha256": "d5596e9cd2b444b5e11a809c1aea10e635900b7b8a2baf60e63f87b6f5779484"
+    },
+    {
+      "path": "frontend/dist/assets/index-BbXKcJRd.css",
+      "sha256": "9bd6c9094a256584a9b5244e4a52c0bdfd3b9fbe280f9b9ff65cdc498a1c8cd3"
+    }
+  ],
+  "source_files_changed": false,
+  "database": "SQLite backup to independent workspace.db",
+  "dataset_and_models": "Existing paths referenced; no weight/image duplication",
+  "old_server_stopped": false,
+  "port": 5175,
+  "python": "C:\\Users\\Keishi\\Portfolio\\Generation\\Training\\LoRA-Trainer\\worktrees\\ui-refresh\\backend\\.venv\\Scripts\\python.exe",
+  "post_copy_changes": {
+    "frontend/index.html": "new title and same favicon embedded",
+    "frontend/dist/index.html": "new title and same favicon embedded",
+    "backend/desktop_server.py": "new single-port entry",
+    "scripts/Start.ps1": "non-destructive startup",
+    "Start.cmd": "user launch entry",
+    "frontend/vite.config.ts": "dev5176 proxies the new single-port instance5175, preserving /api"
+  }
+}

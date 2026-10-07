@@ -1,0 +1,12 @@
+{
+  "status": "NOT_DELETED_POLICY_REJECTION",
+  "requested_bytes": 46516972488,
+  "target_exists": true,
+  "old_root_exists": false,
+  "training_references_unchanged": true,
+  "application_root": "C:\\Users\\Keishi\\Portfolio\\Generation\\Training\\LoRA-Studio-Next",
+  "tool_error": "exec_command CreateProcess rejected: blocked by policy",
+  "detailed_policy_reason": "UNKNOWN",
+  "configuration_change_executed": false,
+  "policy_or_security_settings_modified": false
+}

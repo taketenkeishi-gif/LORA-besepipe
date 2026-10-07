@@ -1,0 +1,93 @@
+{
+ "auc": {
+  "tags": 0.916,
+  "CLIP full": 0.785,
+  "CLIP head": 0.702,
+  "tags + CLIP full": 0.924,
+  "tags + CLIP head": 0.896,
+  "tags + CLIP head + CLIP full": 0.896,
+  "CLIP head + CLIP full": 0.761
+ },
+ "clustering": {
+  "tags @neg-quantile 0.5": {
+   "clusters>=4": 5,
+   "covered_crops": 507,
+   "purity": 0.795,
+   "clusters_per_name(>=3 crops)": {
+    "nanoha": 4,
+    "hayate": 3,
+    "fate": 3
+   }
+  },
+  "tags @neg-quantile 0.8": {
+   "clusters>=4": 10,
+   "covered_crops": 489,
+   "purity": 0.86,
+   "clusters_per_name(>=3 crops)": {
+    "nanoha": 5,
+    "fate": 3,
+    "hayate": 2
+   }
+  },
+  "tags @neg-quantile 0.9": {
+   "clusters>=4": 24,
+   "covered_crops": 443,
+   "purity": 0.989,
+   "clusters_per_name(>=3 crops)": {
+    "nanoha": 7,
+    "fate": 2,
+    "hayate": 1
+   }
+  },
+  "tags @neg-quantile 0.97": {
+   "clusters>=4": 31,
+   "covered_crops": 378,
+   "purity": 0.987,
+   "clusters_per_name(>=3 crops)": {
+    "nanoha": 6,
+    "fate": 2,
+    "hayate": 1
+   }
+  },
+  "tags + CLIP full @neg-quantile 0.5": {
+   "clusters>=4": 6,
+   "covered_crops": 506,
+   "purity": 0.811,
+   "clusters_per_name(>=3 crops)": {
+    "nanoha": 4,
+    "hayate": 2,
+    "fate": 2
+   }
+  },
+  "tags + CLIP full @neg-quantile 0.8": {
+   "clusters>=4": 15,
+   "covered_crops": 427,
+   "purity": 0.89,
+   "clusters_per_name(>=3 crops)": {
+    "nanoha": 7,
+    "fate": 2,
+    "hayate": 1
+   }
+  },
+  "tags + CLIP full @neg-quantile 0.9": {
+   "clusters>=4": 25,
+   "covered_crops": 364,
+   "purity": 1.0,
+   "clusters_per_name(>=3 crops)": {
+    "nanoha": 8,
+    "fate": 1,
+    "hayate": 1
+   }
+  },
+  "tags + CLIP full @neg-quantile 0.97": {
+   "clusters>=4": 43,
+   "covered_crops": 242,
+   "purity": 1.0,
+   "clusters_per_name(>=3 crops)": {
+    "nanoha": 11,
+    "fate": 3,
+    "hayate": 1
+   }
+  }
+ }
+}

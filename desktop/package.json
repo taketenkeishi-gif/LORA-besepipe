@@ -1,13 +1,7 @@
 {
-  "name": "lora-workbench-desktop",
-  "version": "0.1.0",
+  "name": "lora-studio",
+  "productName": "LoRA Studio",
+  "version": "1.0.0",
   "private": true,
-  "main": "main.cjs",
-  "scripts": {
-    "start": "electron ."
-  },
-  "devDependencies": {
-    "electron": "^31.7.7"
-  }
+  "main": "main.cjs"
 }
-

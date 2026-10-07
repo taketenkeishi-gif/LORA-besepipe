@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 import subprocess
@@ -12,6 +13,16 @@ from fastapi.responses import HTMLResponse
 
 from ..db import get_conn
 from ..schemas import PreviewPromptsIn, PreviewPromptsOut, ToolPathsIn, ToolPathsOut
+from ..trainers import get_spec
+from ..trainers import registry as _trainer_registry  # noqa: F401 — 登録トリガー
+from ..services.preview_prompts import (
+    DEFAULT_NEGATIVE,
+    DEFAULT_PREVIEW_RESOLUTION,
+    DEFAULT_QUALITY,
+    build_sample_line,
+    default_prompt_item,
+    resolve_preview_params,
+)
 from playwright.async_api import async_playwright
 
 from ..services.pixiv_auth import (
@@ -28,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
-SETTINGS_KEYS = ("python_exe", "kohya_root", "comfyui_root", "wd14_script", "temp_dir", "dataset_base_dir", "pixiv_session")
+SETTINGS_KEYS = ("python_exe", "kohya_root", "musubi_root", "ai_toolkit_root", "comfyui_root", "wd14_script", "temp_dir", "dataset_base_dir", "pixiv_session", "lora_output_dir")
 PROMPT_KEYS = ("positive_prompt", "negative_prompt")
 
 
@@ -40,14 +51,85 @@ def _read_paths() -> dict[str, str]:
     return {k: found.get(k, "") for k in SETTINGS_KEYS}
 
 
-def _read_prompts() -> dict[str, str]:
+def _read_preview_resolution(found: dict[str, str] | None = None) -> int:
+    """app_settings の preview_resolution を読む。未設定なら既定 1024。"""
+    if found is None:
+        conn = get_conn()
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key='preview_resolution'"
+        ).fetchone()
+        conn.close()
+        raw = str(row["value"]) if row else ""
+    else:
+        raw = found.get("preview_resolution", "")
+    try:
+        v = int(raw)
+        return max(256, min(2048, v))
+    except (ValueError, TypeError):
+        return DEFAULT_PREVIEW_RESOLUTION
+
+
+def _read_prompts() -> dict:
     conn = get_conn()
-    rows = conn.execute("SELECT key, value FROM app_settings WHERE key IN (?, ?)", PROMPT_KEYS).fetchall()
+    rows = conn.execute(
+        "SELECT key, value FROM app_settings "
+        "WHERE key IN ('positive_prompt','negative_prompt','preview_prompts_json','preview_resolution',"
+        "'preview_sampler','preview_cfg','preview_steps','preview_instances_per_prompt')"
+    ).fetchall()
     conn.close()
     found = {str(r["key"]): str(r["value"]) for r in rows}
+    pos = found.get("positive_prompt") or DEFAULT_QUALITY
+    neg = found.get("negative_prompt") or DEFAULT_NEGATIVE
+    prompts: list[dict] = []
+    raw = found.get("preview_prompts_json")
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                prompts = [
+                    {
+                        # 空の quality は既定値で自動補完して表示する
+                        "label": str(p.get("label", "")),
+                        "quality": str(p.get("quality", "")).strip() or DEFAULT_QUALITY,
+                        "positive": str(p.get("positive", "")),
+                        "negative": str(p.get("negative", "")).strip() or DEFAULT_NEGATIVE,
+                        "trigger_words": str(p.get("trigger_words", "")),
+                    }
+                    for p in parsed if isinstance(p, dict)
+                ]
+        except (ValueError, TypeError):
+            prompts = []
+    if not prompts:
+        prompts = [default_prompt_item()]
+
+    def _opt_float(key: str) -> float | None:
+        raw = found.get(key, "").strip()
+        if not raw:
+            return None
+        try:
+            return float(raw)
+        except (ValueError, TypeError):
+            return None
+
+    def _opt_int(key: str) -> int | None:
+        v = _opt_float(key)
+        return int(v) if v is not None else None
+
+    try:
+        instances_per_prompt = max(1, min(8, int(found.get("preview_instances_per_prompt", "1"))))
+    except (ValueError, TypeError):
+        instances_per_prompt = 1
+
     return {
-        "positive_prompt": found.get("positive_prompt", "masterpiece, best quality, 1girl, portrait"),
-        "negative_prompt": found.get("negative_prompt", "low quality, blurry, bad anatomy"),
+        "positive_prompt": pos,
+        "negative_prompt": neg,
+        "prompts": prompts,
+        "preview_resolution": _read_preview_resolution(found),
+        "preview_sampler": found.get("preview_sampler", "").strip(),
+        "preview_cfg": _opt_float("preview_cfg"),
+        "preview_steps": _opt_int("preview_steps"),
+        "instances_per_prompt": instances_per_prompt,
+        "expected_preview_images": len(prompts) * instances_per_prompt,
     }
 
 
@@ -70,11 +152,106 @@ def _write_paths(payload: dict[str, str]) -> None:
     conn.close()
 
 
-def _write_prompts(payload: dict[str, str]) -> None:
+def _migrate_prompt_defaults() -> None:
+    """既存 preview_prompts_json の空 quality / negative に既定値を永続補完する（冪等）。
+    起動時に1回実行。学習も DB を直接読むため、ここで埋めておくと反映される。"""
+    try:
+        conn = get_conn()
+        row = conn.execute(
+            "SELECT value FROM app_settings WHERE key='preview_prompts_json'"
+        ).fetchone()
+        if not row or not str(row["value"]).strip():
+            conn.close()
+            return
+        parsed = json.loads(row["value"])
+        if not isinstance(parsed, list):
+            conn.close()
+            return
+        changed = False
+        for p in parsed:
+            if not isinstance(p, dict):
+                continue
+            if not str(p.get("quality", "")).strip():
+                p["quality"] = DEFAULT_QUALITY
+                changed = True
+            if not str(p.get("negative", "")).strip():
+                p["negative"] = DEFAULT_NEGATIVE
+                changed = True
+        if changed:
+            conn.execute(
+                "UPDATE app_settings SET value=?, updated_at=CURRENT_TIMESTAMP "
+                "WHERE key='preview_prompts_json'",
+                (json.dumps(parsed, ensure_ascii=False),),
+            )
+            conn.commit()
+            logger.info("[preview-prompts] migrated empty quality/negative to defaults")
+        conn.close()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[preview-prompts] _migrate_prompt_defaults error: {e}")
+
+
+def _write_prompts(payload: dict) -> None:
+    # prompts(リスト)が来たらそれを正とし、先頭を legacy positive/negative に同期する。
+    prompts = payload.get("prompts")
+    if prompts:
+        prompts = [
+            {
+                "label": str(p.get("label", "")),
+                "quality": str(p.get("quality", "")).strip(),
+                "positive": str(p.get("positive", "")).strip(),
+                "negative": str(p.get("negative", "")).strip(),
+                "trigger_words": str(p.get("trigger_words", "")).strip(),
+            }
+            for p in prompts
+            if isinstance(p, dict)
+            and (
+                str(p.get("quality", "")).strip()
+                or str(p.get("positive", "")).strip()
+                or str(p.get("trigger_words", "")).strip()
+            )
+        ]
+    if not prompts:
+        pos = str(payload.get("positive_prompt", "")).strip()
+        neg = str(payload.get("negative_prompt", "")).strip()
+        item = default_prompt_item()
+        if pos:
+            item["positive"] = pos
+        if neg:
+            item["negative"] = neg
+        prompts = [item]
+    pos0 = prompts[0].get("positive") or prompts[0].get("quality") or ""
+    neg0 = prompts[0].get("negative", "")
+
+    # プレビュー解像度（256〜2048 にクランプ、未指定は既定 1024）
+    try:
+        pres = max(256, min(2048, int(payload.get("preview_resolution", DEFAULT_PREVIEW_RESOLUTION))))
+    except (ValueError, TypeError):
+        pres = DEFAULT_PREVIEW_RESOLUTION
+
+    # sampler/cfg/steps は空/None なら「自動（モデル既定）」として空文字を保存する
+    sampler_override = str(payload.get("preview_sampler") or "").strip()
+    cfg_override = payload.get("preview_cfg")
+    steps_override = payload.get("preview_steps")
+    cfg_str = "" if cfg_override in (None, "") else str(cfg_override)
+    steps_str = "" if steps_override in (None, "") else str(int(steps_override))
+
+    try:
+        instances_per_prompt = max(1, min(8, int(payload.get("instances_per_prompt", 1))))
+    except (ValueError, TypeError):
+        instances_per_prompt = 1
+
     conn = get_conn()
     cur = conn.cursor()
-    for key in PROMPT_KEYS:
-        val = str(payload.get(key, "")).strip()
+    for key, val in (
+        ("positive_prompt", pos0),
+        ("negative_prompt", neg0),
+        ("preview_prompts_json", json.dumps(prompts, ensure_ascii=False)),
+        ("preview_resolution", str(pres)),
+        ("preview_sampler", sampler_override),
+        ("preview_cfg", cfg_str),
+        ("preview_steps", steps_str),
+        ("preview_instances_per_prompt", str(instances_per_prompt)),
+    ):
         cur.execute(
             """
             INSERT INTO app_settings(key, value, updated_at)
@@ -112,12 +289,21 @@ def _autodetect() -> dict[str, str]:
 
     comfy_candidates = [
         project_root / "external_tools" / "ComfyUI",
+        Path.home() / "AI_tools" / "ComfyUI-Portable" / "ComfyUI_windows_portable" / "ComfyUI",
+        Path.home() / "AI_tools" / "ComfyUI",
         Path.home() / "ComfyUI",
         Path("C:/ComfyUI"),
         Path("D:/ComfyUI"),
     ]
+    # AI_tools 配下の portable 版を動的に探索（models/checkpoints を持つ ComfyUI ルート）
+    ai_tools = Path.home() / "AI_tools"
+    if ai_tools.exists():
+        for cand in ai_tools.glob("**/ComfyUI"):
+            if (cand / "models" / "checkpoints").is_dir():
+                comfy_candidates.insert(0, cand)
+                break
     for c in comfy_candidates:
-        if c.exists() and c.is_dir():
+        if c.exists() and c.is_dir() and (c / "models").exists():
             result["comfyui_root"] = str(c.resolve())
             break
 
@@ -231,6 +417,7 @@ def integrations_status() -> dict:
     checks = {
         "python_exe": _check_exe(paths["python_exe"]),
         "kohya_root": _check_dir(paths["kohya_root"]),
+        "ai_toolkit_root": _check_file(str(Path(paths["ai_toolkit_root"]) / "run.py")) if paths["ai_toolkit_root"] else False,
         "comfyui_root": _check_dir(paths["comfyui_root"]),
         "wd14_script": _check_file(paths["wd14_script"]),
         "temp_dir": _check_dir(paths["temp_dir"]),
@@ -248,7 +435,84 @@ def get_preview_prompts() -> PreviewPromptsOut:
 @router.put("/preview-prompts", response_model=PreviewPromptsOut)
 def update_preview_prompts(payload: PreviewPromptsIn) -> PreviewPromptsOut:
     _write_prompts(payload.model_dump())
+    _sync_active_sample_prompts()
     return PreviewPromptsOut(**_read_prompts())
+
+
+def _sync_active_sample_prompts() -> None:
+    """学習中の run がある場合、sample_prompts.txt を最新プロンプトで上書きする。
+    kohya_ss はエポックごとにこのファイルを再読するため、次エポックから反映される。"""
+    try:
+        conn = get_conn()
+        rows = conn.execute(
+            "SELECT id, config_json FROM training_runs WHERE status='training' ORDER BY id DESC"
+        ).fetchall()
+        prow = conn.execute(
+            "SELECT value FROM app_settings WHERE key='preview_prompts_json'"
+        ).fetchone()
+        prows = conn.execute(
+            "SELECT key, value FROM app_settings WHERE key IN ('positive_prompt','negative_prompt')"
+        ).fetchall()
+
+        if not rows:
+            conn.close()
+            return
+
+        prompt_items: list[dict] = []
+        if prow and prow["value"]:
+            parsed = json.loads(prow["value"])
+            if isinstance(parsed, list):
+                prompt_items = [
+                    p for p in parsed
+                    if isinstance(p, dict)
+                    and (
+                        str(p.get("quality", "")).strip()
+                        or str(p.get("positive", "")).strip()
+                        or str(p.get("trigger_words", "")).strip()
+                    )
+                ]
+        if not prompt_items:
+            pmap = {str(r["key"]): str(r["value"]) for r in prows}
+            item = default_prompt_item()
+            if pmap.get("positive_prompt"):
+                item["positive"] = pmap["positive_prompt"]
+            if pmap.get("negative_prompt"):
+                item["negative"] = pmap["negative_prompt"]
+            prompt_items = [item]
+
+        preview_res = _read_preview_resolution()
+        runs_root = Path(__file__).resolve().parents[3] / ".runtime" / "runs"
+        for row in rows:
+            try:
+                run_dir = runs_root / str(row["id"])
+                prompts_path = run_dir / "sample_prompts.txt"
+                if not run_dir.exists():
+                    continue
+                # 学習中モデルの世代に応じた sampler/cfg/steps を使う（未取得時は SD/SDXL 既定）
+                model_family = "sd"
+                try:
+                    run_cfg = json.loads(row["config_json"] or "{}")
+                    model_family = str(run_cfg.get("model_family") or "sd")
+                except Exception:
+                    pass
+                run_spec = get_spec(model_family)
+                _sampler, cfg_scale, steps = resolve_preview_params(
+                    conn,
+                    spec_sampler=run_spec.preview_sampler if run_spec else "euler_a",
+                    spec_cfg=run_spec.preview_cfg if run_spec else 7.0,
+                    spec_steps=run_spec.preview_steps if run_spec else 20,
+                )
+                lines = [
+                    build_sample_line(p, preview_res, steps=steps, cfg=cfg_scale)
+                    for p in prompt_items
+                ]
+                prompts_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                logger.info(f"[preview-prompts] updated sample_prompts.txt for run {row['id']}")
+            except Exception as e:
+                logger.warning(f"[preview-prompts] failed to update run {row['id']}: {e}")
+        conn.close()
+    except Exception as e:
+        logger.warning(f"[preview-prompts] _sync_active_sample_prompts error: {e}")
 
 
 # Pixiv Authentication Endpoints
@@ -582,6 +846,25 @@ async def pixiv_refresh() -> dict:
         "refreshed": False,
         "message": "ブラウザを起動しました。Pixiv にログインしてください。"
     }
+
+
+@router.post("/pixiv/cookie")
+def pixiv_set_cookie(payload: dict) -> dict:
+    """
+    webview(persist:pixiv) でログイン済みの PHPSESSID をバックエンドへ同期する。
+    Electron の main プロセスがパーティションの cookie を読んで POST する想定。
+    バックエンドの画像取得(urllib)が webview のログインを共有できるようにするのが目的。
+    """
+    phpsessid = str(payload.get("phpsessid", "")).strip()
+    if not phpsessid:
+        raise HTTPException(status_code=422, detail="phpsessid required")
+    current = _load_pixiv_session_from_db().get("phpsessid") or ""
+    if phpsessid == current:
+        return {"success": True, "changed": False, "message": "unchanged"}
+    user_id = str(payload.get("user_id", "")).strip() or "webview"
+    expires_at = (datetime.now() + timedelta(days=30)).isoformat()
+    ok = _save_pixiv_session_to_db(phpsessid, user_id, expires_at)
+    return {"success": ok, "changed": ok, "message": "pixiv session synced from webview"}
 
 
 @router.post("/pixiv/logout")

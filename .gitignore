@@ -15,4 +15,14 @@ Lo Ra制作ワークベンチ 企画書.pdf
 projects/*
 !projects/.gitkeep
 external_tools/
+external_dataset/
 .runtime/
+
+# Dev_Bridge / Claude Code local state
+.devbridge/
+.devbridge-id
+.claude/
+
+# build output / migration logs (too large, personal paths)
+desktop/runtime/
+docs/migration-*/

@@ -1,0 +1,30 @@
+import type {Project} from '../../types';
+export type NormalizeSettings={project_id:number;relatives:string[];mode:'pad'|'longest'|'shortest'|'crop';width:number;height:number;allow_upscale:boolean;alignment?:number};
+export type NormalizePreview={items:{relative:string;source_size:number[];output_size:number[];content_size:number[];scale:number;sha256:string;caption_revision:string}[];before:string;after:string;count:number};
+export type TagResult={relative:string;caption:string;revision:string;previous:string;tag_count:number;raw_tags?:string[]};
+export type TagJob={id?:string;status:string;message?:string;total?:number;done?:number;results?:TagResult[];errors?:{relative:string;message:string}[];inputs?:{relative:string}[];requested_count?:number;requested_relatives?:string[];skipped_existing_count?:number;model?:{id:string};mode?:string;threshold?:number;character_threshold?:number;remove_characters?:boolean;prefix?:string;blocked?:string};
+export type TagOptions={project_id:number;relatives:string[];model:string;threshold:number;character_threshold:number;remove_characters:boolean;mode:string;prefix:string;blocked:string;scope?:string};
+export type NamingOptions={numbering:'append'|'manual';project_id:number;relatives:string[];mode:'rename'|'copy';title:string;template:string;start:number;digits:number};
+export type NamingPlan={numbering?:'append'|'manual';assigned_start?:number|null;mode:'rename'|'copy';copy_folder:string;rows:{before:string;after:string;has_txt:boolean;changed:boolean;sha256:string;caption_revision:string}[];changed:number;folder:string};
+declare global {interface Window {loraDesktop?:{
+ openDatasetFolder:()=>Promise<Project|null>;
+ chooseVideo?:()=>Promise<string|null>;
+ revealPreset?:(id?:string|null)=>Promise<string>;
+ previewNormalize:(p:NormalizeSettings)=>Promise<NormalizePreview>;
+ applyNormalize:(p:NormalizeSettings&{expected:NormalizePreview['items']})=>Promise<{folder:string;relatives:string[];count:number}>;
+ previewNaming:(p:NamingOptions)=>Promise<NamingPlan>;
+ applyNaming:(p:NamingOptions&{expected:NamingPlan})=>Promise<{folder:string;relatives:string[];count:number;token:string;undoable:boolean}>;
+ undoNaming:(p:{project_id:number;token:string})=>Promise<{folder:string;relatives:string[];count:number}>;
+ preprocessing:(operation:string,payload?:Record<string,unknown>)=>Promise<any>;
+ importWebImage:(p:{project_id:number;folder:string;url:string})=>Promise<{relative:string;name:string}>;
+ tagModels:()=>Promise<{models:{id:string;name:string;bytes:number}[]}>;
+ startTags:(p:TagOptions)=>Promise<TagJob>;
+ tagStatus:(project_id:number)=>Promise<TagJob>;
+ stopTags:(project_id:number)=>Promise<{requested:boolean}>;
+ comfy:(operation:string,payload?:Record<string,unknown>)=>Promise<any>;
+ chooseComfyRoot:()=>Promise<string|null>;
+ loadComfyWorkflow:(path:string)=>Promise<{graph:Record<string,unknown>;path:string}>;
+ compileComfyWorkflow:(payload:{data:unknown;name:string})=>Promise<{graph:Record<string,unknown>;path:string}>;
+}}}
+export const desktop=()=>window.loraDesktop;
+export const desktopError=(error:unknown)=>(error instanceof Error?error.message:String(error)).replace(/^Error invoking remote method '[^']+': (?:Error: )?/,'');

@@ -1,0 +1,27 @@
+{
+  "trainer_configs": [
+    {
+      "project_id": 1,
+      "trainer_config": "C:\\Users\\Keishi\\Portfolio\\Generation\\Training\\LoRA-Studio-Next\\docs\\shared-models-20260920\\project-1\\config.toml",
+      "model_paths": {
+        "pretrained_model_name_or_path": "C:\\Users\\Keishi\\AI_tools\\ComfyUI-Portable\\ComfyUI_windows_portable\\ComfyUI\\models\\diffusion_models\\anima-base-v1.0.safetensors",
+        "qwen3": "C:\\Users\\Keishi\\AI_tools\\ComfyUI-Portable\\ComfyUI_windows_portable\\ComfyUI\\models\\text_encoders\\qwen_3_06b_base.safetensors",
+        "vae": "C:\\Users\\Keishi\\AI_tools\\ComfyUI-Portable\\ComfyUI_windows_portable\\ComfyUI\\models\\vae\\qwen_image_vae.safetensors"
+      }
+    },
+    {
+      "project_id": 2,
+      "trainer_config": "C:\\Users\\Keishi\\Portfolio\\Generation\\Training\\LoRA-Studio-Next\\docs\\shared-models-20260920\\project-2\\config.toml",
+      "model_paths": {
+        "pretrained_model_name_or_path": "C:\\Users\\Keishi\\AI_tools\\ComfyUI-Portable\\ComfyUI_windows_portable\\ComfyUI\\models\\diffusion_models\\anima-base-v1.0.safetensors",
+        "qwen3": "C:\\Users\\Keishi\\AI_tools\\ComfyUI-Portable\\ComfyUI_windows_portable\\ComfyUI\\models\\text_encoders\\qwen_3_06b_base.safetensors",
+        "vae": "C:\\Users\\Keishi\\AI_tools\\ComfyUI-Portable\\ComfyUI_windows_portable\\ComfyUI\\models\\vae\\qwen_image_vae.safetensors"
+      }
+    }
+  ],
+  "anima_in_live_selector": true,
+  "candidate_sources": [
+    "comfyui"
+  ],
+  "training_executed": false
+}

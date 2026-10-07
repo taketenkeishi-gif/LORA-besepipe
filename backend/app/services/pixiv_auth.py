@@ -269,7 +269,7 @@ class PixivBrowserSession:
             logger.info(f"Browser session {self.session_id} opened for login")
             return {
                 "success": True,
-                "popup_url": f"http://localhost:8000/settings/pixiv/popup/{self.session_id}",
+                "popup_url": f"/api/settings/pixiv/popup/{self.session_id}",
                 "already_logged_in": False,
                 "error": None,
             }

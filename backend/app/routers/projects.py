@@ -84,6 +84,30 @@ def list_projects() -> list[ProjectOut]:
     return [ProjectOut(**dict(r)) for r in rows]
 
 
+@router.get("/{project_id}/cover")
+def project_cover(project_id: int) -> dict:
+    """プロジェクトアイコン用に、データセットから代表画像を最大4枚返す（2x2ボード用）。
+    全体から均等サンプリングして偏りを減らす。"""
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT file_path FROM dataset_items WHERE project_id = ? AND selected = 1 ORDER BY id",
+        (project_id,),
+    ).fetchall()
+    conn.close()
+    paths = [str(r["file_path"]) for r in rows if r["file_path"]]
+    # 存在するファイルのみ
+    paths = [p for p in paths if Path(p).exists()]
+    if not paths:
+        return {"project_id": project_id, "images": []}
+    if len(paths) <= 4:
+        picked = paths
+    else:
+        # 均等サンプリングで4枚
+        step = len(paths) / 4
+        picked = [paths[int(i * step)] for i in range(4)]
+    return {"project_id": project_id, "images": picked}
+
+
 @router.patch("/{project_id}", response_model=ProjectOut)
 def update_project(project_id: int, payload: ProjectUpdateIn) -> ProjectOut:
     row = _project_row(project_id)

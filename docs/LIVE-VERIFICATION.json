@@ -1,0 +1,12 @@
+{
+  "url": "http://127.0.0.1:5175/project/2/dataset/images?folder=references",
+  "title": "LoRA Studio Next",
+  "image_count": 5,
+  "images_loaded": true,
+  "native_drag_marker": true,
+  "escape_cancel": true,
+  "source_order_unchanged": true,
+  "mutations": [],
+  "errors": [],
+  "bad": []
+}

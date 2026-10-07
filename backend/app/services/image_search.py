@@ -16,12 +16,25 @@ from .image_quality import ImageQualityEvaluator
 
 logger = logging.getLogger(__name__)
 
-try:
-    from sentence_transformers import SentenceTransformer
-    MODEL = SentenceTransformer('clip-ViT-B-32')
-except Exception as e:
-    logger.warning(f"CLIP model load failed: {e}")
-    MODEL = None
+MODEL = None
+_MODEL_LOAD_ATTEMPTED = False
+
+
+def _get_model():
+    """Load the optional CLIP model only when image similarity is requested.
+
+    Importing the API must never start a hundreds-of-megabytes model download.
+    """
+    global MODEL, _MODEL_LOAD_ATTEMPTED
+    if MODEL is not None or _MODEL_LOAD_ATTEMPTED:
+        return MODEL
+    _MODEL_LOAD_ATTEMPTED = True
+    try:
+        from sentence_transformers import SentenceTransformer
+        MODEL = SentenceTransformer("clip-ViT-B-32")
+    except Exception as exc:
+        logger.warning(f"CLIP model load failed: {exc}")
+    return MODEL
 
 
 class ImageSearchService:
@@ -30,11 +43,12 @@ class ImageSearchService:
     @staticmethod
     def extract_features(image_path: str) -> Optional[list]:
         """CLIP で画像特徴抽出"""
-        if not MODEL:
+        model = _get_model()
+        if not model:
             return None
         try:
             img = Image.open(image_path).convert('RGB')
-            img_emb = MODEL.encode(img, convert_to_tensor=True)
+            img_emb = model.encode(img, convert_to_tensor=True)
             return img_emb.cpu().numpy().tolist()
         except Exception as e:
             logger.error(f"Feature extraction failed for {image_path}: {e}")
@@ -43,7 +57,7 @@ class ImageSearchService:
     @staticmethod
     def extract_batch_features(image_paths: list) -> Optional[list]:
         """複数画像の特徴抽出＆平均"""
-        if not MODEL or not image_paths:
+        if not _get_model() or not image_paths:
             return None
         try:
             features = []
@@ -97,14 +111,15 @@ class ImageSearchService:
     @staticmethod
     def _build_reference_embedding(image_paths: list):
         """既存データセット画像からCLIP参照embeddingを構築（同期、to_thread用）"""
-        if not MODEL or not image_paths:
+        model = _get_model()
+        if not model or not image_paths:
             return None
         import numpy as np
         embeddings = []
         for path in image_paths[:15]:
             try:
                 img = Image.open(path).convert('RGB')
-                emb = MODEL.encode(img, convert_to_tensor=False)
+                emb = model.encode(img, convert_to_tensor=False)
                 embeddings.append(emb)
             except Exception as e:
                 logger.debug(f"Reference encode failed {path}: {e}")

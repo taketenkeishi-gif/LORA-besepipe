@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "goal_id": "sharing-preference-start-repair",
+  "goal_status": "active",
+  "wait_state": "RUNNING_GPU",
+  "updated_at": "2026-09-22T07:12:05.865222+00:00",
+  "external_lane": {
+    "id": "user-Run23",
+    "state": "training",
+    "liveness_evidence": {
+      "run_id": 23,
+      "done_steps": 144,
+      "process_alive": true,
+      "observed_at": "2026-09-22T07:12:05.865222+00:00",
+      "watcher_session": 49416,
+      "record": "C:\\Users\\Keishi\\Documents\\Codex\\2026-09-19\\lo\\work\\sharing-safe-deploy.json",
+      "log_tail": "steps:  28%|##7       | 144/520 [12:10<31:46,  5.07s/it, avr_loss=0.0672]"
+    },
+    "timeout_at": "2026-09-22T08:21:23.439867+00:00",
+    "auto_resume": true,
+    "join_action": "Bounded helper49416 appliesverifiedbackendonlyafterqueue+previews+actualtrainerPIDs allidle; parentverifiesfinalreceipt/status/codehash."
+  },
+  "ready_queue": [
+    {
+      "id": "start-existing-run22",
+      "status": "DONE",
+      "evidence": "actualRun22step>0; sameRun, noexternalstop"
+    },
+    {
+      "id": "sharing-persistence-tests",
+      "status": "DONE",
+      "evidence": "work/sharing-persistence-test.json andsharing-start-route/result.json"
+    },
+    {
+      "id": "independent-ui",
+      "status": "DONE",
+      "evidence": "work/sharing-preference-user-check.json"
+    }
+  ],
+  "independent_work_exhausted": true,
+  "next_resume_action": "Pollhelper49416 andlivequeue. Neveruseoldsharing-deploy-wait.json ready:true (staleRun22idle). OnceDEPLOYEDverifyAPIstatusallowflag,startresponsefixture,Run23preserved. Sourcechangeabortmustbeinspected."
+}

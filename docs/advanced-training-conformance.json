@@ -1,0 +1,1021 @@
+{
+  "reference_product": {
+    "name": "Installed kohya sd-scripts training configuration (not native EXE parity)",
+    "platform": "Windows",
+    "as_of": "2026-09-21"
+  },
+  "behavior_claims": [
+    {
+      "claim_id": "gradient_accumulation_steps",
+      "reference_behavior": "Configure gradient_accumulation_steps for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 361",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit gradient_accumulation_steps, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "lr_warmup_steps",
+      "reference_behavior": "Configure lr_warmup_steps for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 133",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit lr_warmup_steps, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "lr_scheduler_num_cycles",
+      "reference_behavior": "Configure lr_scheduler_num_cycles for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 147",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit lr_scheduler_num_cycles, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "seed",
+      "reference_behavior": "Configure seed for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\anima_minimal_inference.py",
+      "source_locator": "line 90",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit seed, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "max_grad_norm",
+      "reference_behavior": "Configure max_grad_norm for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 89",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit max_grad_norm, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "lr_scheduler_power",
+      "reference_behavior": "Configure lr_scheduler_power for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 153",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit lr_scheduler_power, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "optimizer_args",
+      "reference_behavior": "Configure optimizer_args for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 96",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit optimizer_args, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "lr_scheduler_args",
+      "reference_behavior": "Configure lr_scheduler_args for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 119",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit lr_scheduler_args, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "network_dropout",
+      "reference_behavior": "Configure network_dropout for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\sdxl_train_control_net_lllite.py",
+      "source_locator": "line 625",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit network_dropout, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "network_train_unet_only",
+      "reference_behavior": "Configure network_train_unet_only for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\sdxl_train_leco.py",
+      "source_locator": "line 87",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit network_train_unet_only, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "unet_lr",
+      "reference_behavior": "Configure unet_lr for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\sdxl_train_leco.py",
+      "source_locator": "line 93",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit unet_lr, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "text_encoder_lr",
+      "reference_behavior": "Configure text_encoder_lr for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\train_network.py",
+      "source_locator": "line 1899",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit text_encoder_lr, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "mixed_precision",
+      "reference_behavior": "Configure mixed_precision for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 367",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit mixed_precision, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "save_precision",
+      "reference_behavior": "Configure save_precision for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 226",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit save_precision, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "gradient_checkpointing",
+      "reference_behavior": "Configure gradient_checkpointing for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 358",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit gradient_checkpointing, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "cache_text_encoder_outputs",
+      "reference_behavior": "Configure cache_text_encoder_outputs for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 640",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit cache_text_encoder_outputs, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "cache_text_encoder_outputs_to_disk",
+      "reference_behavior": "Configure cache_text_encoder_outputs_to_disk for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 643",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit cache_text_encoder_outputs_to_disk, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "persistent_data_loader_workers",
+      "reference_behavior": "Configure persistent_data_loader_workers for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 352",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit persistent_data_loader_workers, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "max_data_loader_n_workers",
+      "reference_behavior": "Configure max_data_loader_n_workers for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 346",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit max_data_loader_n_workers, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "vae_batch_size",
+      "reference_behavior": "Configure vae_batch_size for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\gen_img.py",
+      "source_locator": "line 3232",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit vae_batch_size, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "xformers",
+      "reference_behavior": "Configure xformers for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\gen_img.py",
+      "source_locator": "line 3312",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit xformers, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "shuffle_caption",
+      "reference_behavior": "Configure shuffle_caption for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 898",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit shuffle_caption, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "flip_aug",
+      "reference_behavior": "Configure flip_aug for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 951",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit flip_aug, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "color_aug",
+      "reference_behavior": "Configure color_aug for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 948",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit color_aug, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "random_crop",
+      "reference_behavior": "Configure random_crop for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 960",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit random_crop, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "keep_tokens",
+      "reference_behavior": "Configure keep_tokens for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 911",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit keep_tokens, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "caption_dropout_rate",
+      "reference_behavior": "Configure caption_dropout_rate for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 1073",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit caption_dropout_rate, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "caption_tag_dropout_rate",
+      "reference_behavior": "Configure caption_tag_dropout_rate for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 1082",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit caption_tag_dropout_rate, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "caption_dropout_every_n_epochs",
+      "reference_behavior": "Configure caption_dropout_every_n_epochs for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 1076",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit caption_dropout_every_n_epochs, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "enable_bucket",
+      "reference_behavior": "Configure enable_bucket for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 995",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit enable_bucket, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "bucket_no_upscale",
+      "reference_behavior": "Configure bucket_no_upscale for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 1027",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit bucket_no_upscale, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "min_bucket_reso",
+      "reference_behavior": "Configure min_bucket_reso for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 1000",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit min_bucket_reso, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "max_bucket_reso",
+      "reference_behavior": "Configure max_bucket_reso for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 1007",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit max_bucket_reso, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "bucket_reso_steps",
+      "reference_behavior": "Configure bucket_reso_steps for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 1021",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit bucket_reso_steps, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "loss_type",
+      "reference_behavior": "Configure loss_type for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 519",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit loss_type, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "huber_schedule",
+      "reference_behavior": "Configure huber_schedule for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 526",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit huber_schedule, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "huber_c",
+      "reference_behavior": "Configure huber_c for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 534",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit huber_c, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "huber_scale",
+      "reference_behavior": "Configure huber_scale for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 542",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit huber_scale, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "min_snr_gamma",
+      "reference_behavior": "Configure min_snr_gamma for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\custom_train_functions.py",
+      "source_locator": "line 117",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit min_snr_gamma, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "noise_offset",
+      "reference_behavior": "Configure noise_offset for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 454",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit noise_offset, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "multires_noise_discount",
+      "reference_behavior": "Configure multires_noise_discount for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 490",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit multires_noise_discount, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "ip_noise_gamma",
+      "reference_behavior": "Configure ip_noise_gamma for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 471",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit ip_noise_gamma, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "multires_noise_iterations",
+      "reference_behavior": "Configure multires_noise_iterations for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 465",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit multires_noise_iterations, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "debiased_estimation_loss",
+      "reference_behavior": "Configure debiased_estimation_loss for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\custom_train_functions.py",
+      "source_locator": "line 134",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit debiased_estimation_loss, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "max_token_length",
+      "reference_behavior": "Configure max_token_length for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      "source_locator": "line 288",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit max_token_length, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "timestep_sampling",
+      "reference_behavior": "Configure timestep_sampling for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\hunyuan_image_train_network.py",
+      "source_locator": "line 652",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit timestep_sampling, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "discrete_flow_shift",
+      "reference_behavior": "Configure discrete_flow_shift for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\hunyuan_image_train_network.py",
+      "source_locator": "line 674",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit discrete_flow_shift, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "sigmoid_scale",
+      "reference_behavior": "Configure sigmoid_scale for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\hunyuan_image_train_network.py",
+      "source_locator": "line 659",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit sigmoid_scale, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "qwen3_max_token_length",
+      "reference_behavior": "Configure qwen3_max_token_length for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\anima_train_utils.py",
+      "source_locator": "line 85",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit qwen3_max_token_length, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "t5_max_token_length",
+      "reference_behavior": "Configure t5_max_token_length for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\library\\anima_train_utils.py",
+      "source_locator": "line 91",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit t5_max_token_length, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "attn_mode",
+      "reference_behavior": "Configure attn_mode for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\anima_minimal_inference.py",
+      "source_locator": "line 108",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit attn_mode, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "split_attn",
+      "reference_behavior": "Configure split_attn for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\hunyuan_image_train_network.py",
+      "source_locator": "line 700",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit split_attn, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "vae_disable_cache",
+      "reference_behavior": "Configure vae_disable_cache for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\anima_minimal_inference.py",
+      "source_locator": "line 62",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit vae_disable_cache, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "qwen_image_vae_2d",
+      "reference_behavior": "Configure qwen_image_vae_2d for native training",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:\\kohya_ss\\sd-scripts\\anima_minimal_inference.py",
+      "source_locator": "line 68",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "Edit qwen_image_vae_2d, reload draft, prepare TOML and parse native option",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "preview-condition-edit",
+      "reference_behavior": "Edit prompt, negative, seed, resolution, steps, CFG and sampler beside epoch previews",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:/Users/Keishi/Portfolio/Generation/Training/LoRA-Studio-Next/frontend/src/components/Training.tsx",
+      "source_locator": "line 2596",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "preview-condition-edit-edit-reload",
+      "needs_oss_mechanism": false
+    },
+    {
+      "claim_id": "epoch-progress",
+      "reference_behavior": "Show overall percent and per-epoch completion together with Step and ETA",
+      "evidence_class": "FIRST_PARTY",
+      "source": "C:/Users/Keishi/Portfolio/Generation/Training/LoRA-Studio-Next/frontend/src/components/Training.tsx",
+      "source_locator": "line 2030",
+      "state": "CONFIRMED",
+      "active_affordance": true,
+      "required_scenario": "epoch-progress-edit-reload",
+      "needs_oss_mechanism": false
+    }
+  ],
+  "mechanism_mappings": [],
+  "implementation_routes": [
+    {
+      "behavior_claim_id": "gradient_accumulation_steps",
+      "active": true,
+      "route_id": "advanced.gradient_accumulation_steps",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-gradient_accumulation_steps"
+    },
+    {
+      "behavior_claim_id": "lr_warmup_steps",
+      "active": true,
+      "route_id": "advanced.lr_warmup_steps",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-lr_warmup_steps"
+    },
+    {
+      "behavior_claim_id": "lr_scheduler_num_cycles",
+      "active": true,
+      "route_id": "advanced.lr_scheduler_num_cycles",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-lr_scheduler_num_cycles"
+    },
+    {
+      "behavior_claim_id": "seed",
+      "active": true,
+      "route_id": "advanced.seed",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-seed"
+    },
+    {
+      "behavior_claim_id": "max_grad_norm",
+      "active": true,
+      "route_id": "advanced.max_grad_norm",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-max_grad_norm"
+    },
+    {
+      "behavior_claim_id": "lr_scheduler_power",
+      "active": true,
+      "route_id": "advanced.lr_scheduler_power",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-lr_scheduler_power"
+    },
+    {
+      "behavior_claim_id": "optimizer_args",
+      "active": true,
+      "route_id": "advanced.optimizer_args",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-optimizer_args"
+    },
+    {
+      "behavior_claim_id": "lr_scheduler_args",
+      "active": true,
+      "route_id": "advanced.lr_scheduler_args",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-lr_scheduler_args"
+    },
+    {
+      "behavior_claim_id": "network_dropout",
+      "active": true,
+      "route_id": "advanced.network_dropout",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-network_dropout"
+    },
+    {
+      "behavior_claim_id": "network_train_unet_only",
+      "active": true,
+      "route_id": "advanced.network_train_unet_only",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-network_train_unet_only"
+    },
+    {
+      "behavior_claim_id": "unet_lr",
+      "active": true,
+      "route_id": "advanced.unet_lr",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-unet_lr"
+    },
+    {
+      "behavior_claim_id": "text_encoder_lr",
+      "active": true,
+      "route_id": "advanced.text_encoder_lr",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-text_encoder_lr"
+    },
+    {
+      "behavior_claim_id": "mixed_precision",
+      "active": true,
+      "route_id": "advanced.mixed_precision",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-mixed_precision"
+    },
+    {
+      "behavior_claim_id": "save_precision",
+      "active": true,
+      "route_id": "advanced.save_precision",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-save_precision"
+    },
+    {
+      "behavior_claim_id": "gradient_checkpointing",
+      "active": true,
+      "route_id": "advanced.gradient_checkpointing",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-gradient_checkpointing"
+    },
+    {
+      "behavior_claim_id": "cache_text_encoder_outputs",
+      "active": true,
+      "route_id": "advanced.cache_text_encoder_outputs",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-cache_text_encoder_outputs"
+    },
+    {
+      "behavior_claim_id": "cache_text_encoder_outputs_to_disk",
+      "active": true,
+      "route_id": "advanced.cache_text_encoder_outputs_to_disk",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-cache_text_encoder_outputs_to_disk"
+    },
+    {
+      "behavior_claim_id": "persistent_data_loader_workers",
+      "active": true,
+      "route_id": "advanced.persistent_data_loader_workers",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-persistent_data_loader_workers"
+    },
+    {
+      "behavior_claim_id": "max_data_loader_n_workers",
+      "active": true,
+      "route_id": "advanced.max_data_loader_n_workers",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-max_data_loader_n_workers"
+    },
+    {
+      "behavior_claim_id": "vae_batch_size",
+      "active": true,
+      "route_id": "advanced.vae_batch_size",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-vae_batch_size"
+    },
+    {
+      "behavior_claim_id": "xformers",
+      "active": true,
+      "route_id": "advanced.xformers",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-xformers"
+    },
+    {
+      "behavior_claim_id": "shuffle_caption",
+      "active": true,
+      "route_id": "advanced.shuffle_caption",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-shuffle_caption"
+    },
+    {
+      "behavior_claim_id": "flip_aug",
+      "active": true,
+      "route_id": "advanced.flip_aug",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-flip_aug"
+    },
+    {
+      "behavior_claim_id": "color_aug",
+      "active": true,
+      "route_id": "advanced.color_aug",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-color_aug"
+    },
+    {
+      "behavior_claim_id": "random_crop",
+      "active": true,
+      "route_id": "advanced.random_crop",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-random_crop"
+    },
+    {
+      "behavior_claim_id": "keep_tokens",
+      "active": true,
+      "route_id": "advanced.keep_tokens",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-keep_tokens"
+    },
+    {
+      "behavior_claim_id": "caption_dropout_rate",
+      "active": true,
+      "route_id": "advanced.caption_dropout_rate",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-caption_dropout_rate"
+    },
+    {
+      "behavior_claim_id": "caption_tag_dropout_rate",
+      "active": true,
+      "route_id": "advanced.caption_tag_dropout_rate",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-caption_tag_dropout_rate"
+    },
+    {
+      "behavior_claim_id": "caption_dropout_every_n_epochs",
+      "active": true,
+      "route_id": "advanced.caption_dropout_every_n_epochs",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-caption_dropout_every_n_epochs"
+    },
+    {
+      "behavior_claim_id": "enable_bucket",
+      "active": true,
+      "route_id": "advanced.enable_bucket",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-enable_bucket"
+    },
+    {
+      "behavior_claim_id": "bucket_no_upscale",
+      "active": true,
+      "route_id": "advanced.bucket_no_upscale",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-bucket_no_upscale"
+    },
+    {
+      "behavior_claim_id": "min_bucket_reso",
+      "active": true,
+      "route_id": "advanced.min_bucket_reso",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-min_bucket_reso"
+    },
+    {
+      "behavior_claim_id": "max_bucket_reso",
+      "active": true,
+      "route_id": "advanced.max_bucket_reso",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-max_bucket_reso"
+    },
+    {
+      "behavior_claim_id": "bucket_reso_steps",
+      "active": true,
+      "route_id": "advanced.bucket_reso_steps",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-bucket_reso_steps"
+    },
+    {
+      "behavior_claim_id": "loss_type",
+      "active": true,
+      "route_id": "advanced.loss_type",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-loss_type"
+    },
+    {
+      "behavior_claim_id": "huber_schedule",
+      "active": true,
+      "route_id": "advanced.huber_schedule",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-huber_schedule"
+    },
+    {
+      "behavior_claim_id": "huber_c",
+      "active": true,
+      "route_id": "advanced.huber_c",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-huber_c"
+    },
+    {
+      "behavior_claim_id": "huber_scale",
+      "active": true,
+      "route_id": "advanced.huber_scale",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-huber_scale"
+    },
+    {
+      "behavior_claim_id": "min_snr_gamma",
+      "active": true,
+      "route_id": "advanced.min_snr_gamma",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-min_snr_gamma"
+    },
+    {
+      "behavior_claim_id": "noise_offset",
+      "active": true,
+      "route_id": "advanced.noise_offset",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-noise_offset"
+    },
+    {
+      "behavior_claim_id": "multires_noise_discount",
+      "active": true,
+      "route_id": "advanced.multires_noise_discount",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-multires_noise_discount"
+    },
+    {
+      "behavior_claim_id": "ip_noise_gamma",
+      "active": true,
+      "route_id": "advanced.ip_noise_gamma",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-ip_noise_gamma"
+    },
+    {
+      "behavior_claim_id": "multires_noise_iterations",
+      "active": true,
+      "route_id": "advanced.multires_noise_iterations",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-multires_noise_iterations"
+    },
+    {
+      "behavior_claim_id": "debiased_estimation_loss",
+      "active": true,
+      "route_id": "advanced.debiased_estimation_loss",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-debiased_estimation_loss"
+    },
+    {
+      "behavior_claim_id": "max_token_length",
+      "active": true,
+      "route_id": "advanced.max_token_length",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-max_token_length"
+    },
+    {
+      "behavior_claim_id": "timestep_sampling",
+      "active": true,
+      "route_id": "advanced.timestep_sampling",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-timestep_sampling"
+    },
+    {
+      "behavior_claim_id": "discrete_flow_shift",
+      "active": true,
+      "route_id": "advanced.discrete_flow_shift",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-discrete_flow_shift"
+    },
+    {
+      "behavior_claim_id": "sigmoid_scale",
+      "active": true,
+      "route_id": "advanced.sigmoid_scale",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-sigmoid_scale"
+    },
+    {
+      "behavior_claim_id": "qwen3_max_token_length",
+      "active": true,
+      "route_id": "advanced.qwen3_max_token_length",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-qwen3_max_token_length"
+    },
+    {
+      "behavior_claim_id": "t5_max_token_length",
+      "active": true,
+      "route_id": "advanced.t5_max_token_length",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-t5_max_token_length"
+    },
+    {
+      "behavior_claim_id": "attn_mode",
+      "active": true,
+      "route_id": "advanced.attn_mode",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-attn_mode"
+    },
+    {
+      "behavior_claim_id": "split_attn",
+      "active": true,
+      "route_id": "advanced.split_attn",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-split_attn"
+    },
+    {
+      "behavior_claim_id": "vae_disable_cache",
+      "active": true,
+      "route_id": "advanced.vae_disable_cache",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-vae_disable_cache"
+    },
+    {
+      "behavior_claim_id": "qwen_image_vae_2d",
+      "active": true,
+      "route_id": "advanced.qwen_image_vae_2d",
+      "domain_operation": "Validated training configuration -> native trainer TOML",
+      "runtime_scenario": "advanced-field-qwen_image_vae_2d"
+    },
+    {
+      "behavior_claim_id": "preview-condition-edit",
+      "active": true,
+      "route_id": "preview-condition-edit",
+      "domain_operation": "Existing preview profile create/freeze; native run status display",
+      "runtime_scenario": "preview-condition-edit-edit-reload"
+    },
+    {
+      "behavior_claim_id": "epoch-progress",
+      "active": true,
+      "route_id": "epoch-progress",
+      "domain_operation": "Existing preview profile create/freeze; native run status display",
+      "runtime_scenario": "epoch-progress-edit-reload"
+    }
+  ],
+  "scope_note": "User requested advanced training controls; source declarations establish fields, compatibility audited separately. No whole-GUI parity claim."
+}

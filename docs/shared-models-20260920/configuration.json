@@ -1,0 +1,132 @@
+{
+  "before": [
+    {
+      "project_id": 1,
+      "config": {
+        "training_goal": "character_identity",
+        "quality_preset": "balanced",
+        "model_family": "anima",
+        "training_engine": "auto",
+        "base_checkpoint_path": "C:\\Users\\Keishi\\AI_tools\\ComfyUI-Portable\\ComfyUI_windows_portable\\ComfyUI\\models\\diffusion_models\\anima-base-v1.0.safetensors",
+        "dataset_source": "original",
+        "dataset_snapshot_id": 5,
+        "preview_profile_snapshot_id": 1,
+        "gpu_device_id": 1,
+        "rank": 16,
+        "alpha": 16,
+        "learning_rate": 0.0001,
+        "train_batch_size": 1,
+        "epochs": 6,
+        "repeats": 3,
+        "resolution": 1024,
+        "output_name": "anima_lora",
+        "optimizer": "AdamW8bit",
+        "scheduler": "constant",
+        "gradient_checkpointing": true,
+        "cache_latents": true
+      }
+    },
+    {
+      "project_id": 2,
+      "config": {
+        "training_goal": "character_identity",
+        "quality_preset": "balanced",
+        "model_family": "anima",
+        "training_engine": "auto",
+        "base_checkpoint_path": "C:\\Users\\Keishi\\AI_tools\\ComfyUI-Portable\\ComfyUI_windows_portable\\ComfyUI\\models\\diffusion_models\\anima-base-v1.0.safetensors",
+        "dataset_source": "original",
+        "dataset_snapshot_id": null,
+        "preview_profile_snapshot_id": null,
+        "gpu_device_id": 1,
+        "rank": 16,
+        "alpha": 16,
+        "learning_rate": 0.0001,
+        "train_batch_size": 1,
+        "epochs": 6,
+        "repeats": 3,
+        "resolution": 1024,
+        "output_name": "anima_lora",
+        "optimizer": "AdamW8bit",
+        "scheduler": "constant",
+        "gradient_checkpointing": true,
+        "cache_latents": true
+      }
+    }
+  ],
+  "after": [
+    {
+      "project_id": 1,
+      "config": {
+        "training_goal": "character_identity",
+        "quality_preset": "balanced",
+        "model_family": "anima",
+        "training_engine": "auto",
+        "base_checkpoint_path": "C:\\Users\\Keishi\\AI_tools\\ComfyUI-Portable\\ComfyUI_windows_portable\\ComfyUI\\models\\diffusion_models\\anima-base-v1.0.safetensors",
+        "dataset_source": "original",
+        "dataset_snapshot_id": 5,
+        "preview_profile_snapshot_id": 1,
+        "gpu_device_id": 1,
+        "rank": 16,
+        "alpha": 16,
+        "learning_rate": 0.0001,
+        "train_batch_size": 1,
+        "epochs": 6,
+        "repeats": 3,
+        "resolution": 1024,
+        "output_name": "anima_lora",
+        "optimizer": "AdamW8bit",
+        "scheduler": "constant",
+        "gradient_checkpointing": true,
+        "cache_latents": true,
+        "text_encoder_path": "C:\\Users\\Keishi\\AI_tools\\ComfyUI-Portable\\ComfyUI_windows_portable\\ComfyUI\\models\\text_encoders\\qwen_3_06b_base.safetensors",
+        "vae_path": "C:\\Users\\Keishi\\AI_tools\\ComfyUI-Portable\\ComfyUI_windows_portable\\ComfyUI\\models\\vae\\qwen_image_vae.safetensors"
+      }
+    },
+    {
+      "project_id": 2,
+      "config": {
+        "training_goal": "character_identity",
+        "quality_preset": "balanced",
+        "model_family": "anima",
+        "training_engine": "auto",
+        "base_checkpoint_path": "C:\\Users\\Keishi\\AI_tools\\ComfyUI-Portable\\ComfyUI_windows_portable\\ComfyUI\\models\\diffusion_models\\anima-base-v1.0.safetensors",
+        "dataset_source": "original",
+        "dataset_snapshot_id": null,
+        "preview_profile_snapshot_id": null,
+        "gpu_device_id": 1,
+        "rank": 16,
+        "alpha": 16,
+        "learning_rate": 0.0001,
+        "train_batch_size": 1,
+        "epochs": 6,
+        "repeats": 3,
+        "resolution": 1024,
+        "output_name": "anima_lora",
+        "optimizer": "AdamW8bit",
+        "scheduler": "constant",
+        "gradient_checkpointing": true,
+        "cache_latents": true,
+        "text_encoder_path": "C:\\Users\\Keishi\\AI_tools\\ComfyUI-Portable\\ComfyUI_windows_portable\\ComfyUI\\models\\text_encoders\\qwen_3_06b_base.safetensors",
+        "vae_path": "C:\\Users\\Keishi\\AI_tools\\ComfyUI-Portable\\ComfyUI_windows_portable\\ComfyUI\\models\\vae\\qwen_image_vae.safetensors"
+      }
+    }
+  ],
+  "comfyui_root": "C:\\Users\\Keishi\\AI_tools\\ComfyUI-Portable\\ComfyUI_windows_portable\\ComfyUI",
+  "previous_comfyui_root": "C:\\Users\\Keishi\\AI_tools\\ComfyUI-Portable\\ComfyUI_windows_portable\\ComfyUI",
+  "model_files": {
+    "base_checkpoint_path": {
+      "path": "C:\\Users\\Keishi\\AI_tools\\ComfyUI-Portable\\ComfyUI_windows_portable\\ComfyUI\\models\\diffusion_models\\anima-base-v1.0.safetensors",
+      "bytes": 4182218328
+    },
+    "text_encoder_path": {
+      "path": "C:\\Users\\Keishi\\AI_tools\\ComfyUI-Portable\\ComfyUI_windows_portable\\ComfyUI\\models\\text_encoders\\qwen_3_06b_base.safetensors",
+      "bytes": 1192135096
+    },
+    "vae_path": {
+      "path": "C:\\Users\\Keishi\\AI_tools\\ComfyUI-Portable\\ComfyUI_windows_portable\\ComfyUI\\models\\vae\\qwen_image_vae.safetensors",
+      "bytes": 253806246
+    }
+  },
+  "model_copies_created": 0,
+  "local_extra_model_paths_disabled": true
+}

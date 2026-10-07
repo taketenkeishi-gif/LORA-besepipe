@@ -1,0 +1,1 @@
+export type PreparedDataset = {id:number;name:string;item_count:number;snapshot_hash:string;status:string;entries?:{file_path:string;caption_at_snapshot:string}[];preview_profile_snapshot?:{id:number;name:string;snapshot_hash:string}|null};

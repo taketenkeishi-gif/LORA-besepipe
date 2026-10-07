@@ -1,0 +1,21 @@
+const {contextBridge,ipcRenderer}=require('electron');
+contextBridge.exposeInMainWorld('loraDesktop',Object.freeze({
+ openDatasetFolder:()=>ipcRenderer.invoke('lora:open-dataset-folder'),
+ previewNormalize:payload=>ipcRenderer.invoke('lora:dataset-action','normalize-preview',payload),
+ applyNormalize:payload=>ipcRenderer.invoke('lora:dataset-action','normalize-apply',payload),
+ previewNaming:payload=>ipcRenderer.invoke('lora:dataset-action','naming-preview',payload),
+ applyNaming:payload=>ipcRenderer.invoke('lora:dataset-action','naming-apply',payload),
+ undoNaming:payload=>ipcRenderer.invoke('lora:dataset-action','naming-undo',payload),
+ preprocessing:(operation,payload={})=>ipcRenderer.invoke('lora:dataset-action','preprocess-'+operation,payload),
+ importWebImage:payload=>ipcRenderer.invoke('lora:dataset-action','web-image',payload),
+ tagModels:()=>ipcRenderer.invoke('lora:dataset-action','tag-models',{}),
+ startTags:payload=>ipcRenderer.invoke('lora:dataset-action','tag-start',payload),
+ tagStatus:project_id=>ipcRenderer.invoke('lora:dataset-action','tag-status',{project_id}),
+ stopTags:project_id=>ipcRenderer.invoke('lora:dataset-action','tag-stop',{project_id}),
+ comfy: (operation,payload={})=>ipcRenderer.invoke('lora:dataset-action','comfy-'+operation,payload),
+ chooseComfyRoot:()=>ipcRenderer.invoke('lora:choose-comfy-root'),
+ chooseVideo:()=>ipcRenderer.invoke('lora:choose-video'),
+ revealPreset:id=>ipcRenderer.invoke('lora:reveal-preset',id??null),
+ loadComfyWorkflow:path=>ipcRenderer.invoke('lora:load-comfy-workflow',{path}),
+ compileComfyWorkflow:payload=>ipcRenderer.invoke('lora:compile-comfy-workflow',payload),
+}));

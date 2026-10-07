@@ -1,0 +1,767 @@
+{
+ "video": "C:\\Users\\Keishi\\Downloads\\1話.mp4",
+ "params": {
+  "video": "C:/Users/Keishi/Downloads/1話.mp4",
+  "out": "C:/Users/Keishi/Downloads/1話_データセット候補",
+  "limit_seconds": 0,
+  "threshold": 0.3,
+  "min_scene": 0.8,
+  "frame_interval": 1.5,
+  "max_frames_per_scene": 6,
+  "long_side": 1024,
+  "workers": 8,
+  "others": "keep",
+  "overlap_threshold": 0.25,
+  "margin": 0.1,
+  "min_area": 0.02,
+  "min_short": 140,
+  "min_char_crops": 4,
+  "use_names": false,
+  "merge_quantile": 0.9,
+  "assign_threshold": 0.9,
+  "name_min": 8
+ },
+ "duration_s": 602.9,
+ "scenes": 150,
+ "frames_kept": 388,
+ "damaged_candidates_tried": 6,
+ "person_crops": 528,
+ "tracks": 281,
+ "crops_with_other_characters": 178,
+ "crops_in_characters_without_visible_hair_tag": 5,
+ "identity_calibration": {
+  "mode": "unsupervised (no character names used)",
+  "link_threshold": 4.48,
+  "merge_quantile_of_same_frame_different_person_pairs": 0.9,
+  "same_frame_pairs_used": 263,
+  "small_leftovers_attached": 0,
+  "crops_left_unassigned": 164
+ },
+ "partial_body_at_frame_edge": 187,
+ "characters": [
+  {
+   "folder": "char_01_brown-hair-purple-eyes",
+   "trigger": "ch01",
+   "crops": 112,
+   "views": {
+    "front-upper": 18,
+    "front-close": 18,
+    "front-other": 22,
+    "front-cowboy": 6,
+    "side-close": 2,
+    "front-full": 3,
+    "side-other": 1,
+    "side-lower-cut": 7,
+    "front-lower-cut": 3,
+    "side-cowboy": 16,
+    "side-full": 12,
+    "side-upper": 4
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_shirt-blue-necktie",
+     "trigger": "ch01_o01",
+     "images": 38,
+     "dropped_duplicates": 25,
+     "top_clothing": [
+      "shirt",
+      "blue necktie"
+     ]
+    },
+    {
+     "folder": "outfit_02_skirt-jacket",
+     "trigger": "ch01_o02",
+     "images": 33,
+     "dropped_duplicates": 14,
+     "top_clothing": [
+      "skirt",
+      "jacket"
+     ]
+    },
+    {
+     "folder": "outfit_00_不明（衣装が写らない）",
+     "trigger": "ch01_o00",
+     "images": 2,
+     "dropped_duplicates": 0,
+     "top_clothing": []
+    }
+   ]
+  },
+  {
+   "folder": "char_02_brown-hair-purple-eyes",
+   "trigger": "ch02",
+   "crops": 40,
+   "views": {
+    "side-upper": 10,
+    "front-upper": 5,
+    "back-full": 1,
+    "back-other": 6,
+    "front-close": 1,
+    "side-full": 10,
+    "front-other": 4,
+    "front-full": 2,
+    "side-other": 1
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_jacket-shirt",
+     "trigger": "ch02_o01",
+     "images": 23,
+     "dropped_duplicates": 7,
+     "top_clothing": [
+      "jacket",
+      "shirt"
+     ]
+    },
+    {
+     "folder": "outfit_02_jacket-pantyhose",
+     "trigger": "ch02_o02",
+     "images": 7,
+     "dropped_duplicates": 0,
+     "top_clothing": [
+      "jacket",
+      "pantyhose"
+     ]
+    },
+    {
+     "folder": "outfit_03_shirt-skirt",
+     "trigger": "ch02_o03",
+     "images": 3,
+     "dropped_duplicates": 0,
+     "top_clothing": [
+      "shirt",
+      "skirt"
+     ]
+    }
+   ]
+  },
+  {
+   "folder": "char_03_brown-hair-hair-between-eyes",
+   "trigger": "ch03",
+   "crops": 35,
+   "views": {
+    "front-close": 12,
+    "front-upper": 21,
+    "front-other": 2
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_shirt-white-shirt",
+     "trigger": "ch03_o01",
+     "images": 29,
+     "dropped_duplicates": 5,
+     "top_clothing": [
+      "shirt",
+      "white shirt"
+     ]
+    },
+    {
+     "folder": "outfit_00_不明（衣装が写らない）",
+     "trigger": "ch03_o00",
+     "images": 1,
+     "dropped_duplicates": 0,
+     "top_clothing": []
+    }
+   ]
+  },
+  {
+   "folder": "char_04_brown-hair-purple-eyes",
+   "trigger": "ch04",
+   "crops": 34,
+   "views": {
+    "front-other": 19,
+    "front-full": 2,
+    "back-close": 1,
+    "back-upper": 1,
+    "back-other": 6,
+    "front-close": 2,
+    "front-upper": 3
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_shirt-white-shirt",
+     "trigger": "ch04_o01",
+     "images": 18,
+     "dropped_duplicates": 2,
+     "top_clothing": [
+      "shirt",
+      "white shirt"
+     ]
+    },
+    {
+     "folder": "outfit_02_jacket-skirt",
+     "trigger": "ch04_o02",
+     "images": 11,
+     "dropped_duplicates": 1,
+     "top_clothing": [
+      "jacket",
+      "skirt"
+     ]
+    },
+    {
+     "folder": "outfit_00_不明（衣装が写らない）",
+     "trigger": "ch04_o00",
+     "images": 2,
+     "dropped_duplicates": 0,
+     "top_clothing": []
+    }
+   ]
+  },
+  {
+   "folder": "char_05_blonde-hair-red-eyes",
+   "trigger": "ch05",
+   "crops": 22,
+   "views": {
+    "front-other": 9,
+    "front-full": 2,
+    "back-other": 1,
+    "front-close": 10
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_necktie-shirt",
+     "trigger": "ch05_o01",
+     "images": 13,
+     "dropped_duplicates": 7,
+     "top_clothing": [
+      "necktie",
+      "shirt"
+     ]
+    },
+    {
+     "folder": "outfit_00_不明（衣装が写らない）",
+     "trigger": "ch05_o00",
+     "images": 1,
+     "dropped_duplicates": 1,
+     "top_clothing": []
+    }
+   ]
+  },
+  {
+   "folder": "char_06_brown-hair",
+   "trigger": "ch06",
+   "crops": 13,
+   "views": {
+    "back-upper": 6,
+    "back-other": 5,
+    "front-other": 1,
+    "back-full": 1
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_jacket-pantyhose",
+     "trigger": "ch06_o01",
+     "images": 6,
+     "dropped_duplicates": 4,
+     "top_clothing": [
+      "jacket",
+      "pantyhose"
+     ]
+    },
+    {
+     "folder": "outfit_02_shirt-skirt",
+     "trigger": "ch06_o02",
+     "images": 3,
+     "dropped_duplicates": 0,
+     "top_clothing": [
+      "shirt",
+      "skirt"
+     ]
+    }
+   ]
+  },
+  {
+   "folder": "char_07_brown-hair-blue-eyes",
+   "trigger": "ch07",
+   "crops": 9,
+   "views": {
+    "front-close": 7,
+    "side-upper": 1,
+    "front-upper": 1
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_shirt-white-shirt",
+     "trigger": "ch07_o01",
+     "images": 6,
+     "dropped_duplicates": 2,
+     "top_clothing": [
+      "shirt",
+      "white shirt"
+     ]
+    },
+    {
+     "folder": "outfit_00_不明（衣装が写らない）",
+     "trigger": "ch07_o00",
+     "images": 1,
+     "dropped_duplicates": 0,
+     "top_clothing": []
+    }
+   ]
+  },
+  {
+   "folder": "char_08_brown-hair-blue-eyes",
+   "trigger": "ch08",
+   "crops": 8,
+   "views": {
+    "front-other": 8
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_shirt-jacket",
+     "trigger": "ch08_o01",
+     "images": 3,
+     "dropped_duplicates": 2,
+     "top_clothing": [
+      "shirt",
+      "jacket"
+     ]
+    },
+    {
+     "folder": "outfit_02_school-uniform-uniform",
+     "trigger": "ch08_o02",
+     "images": 1,
+     "dropped_duplicates": 2,
+     "top_clothing": [
+      "school uniform",
+      "uniform"
+     ]
+    }
+   ]
+  },
+  {
+   "folder": "char_09_brown-hair-black-eyes",
+   "trigger": "ch09",
+   "crops": 6,
+   "views": {
+    "side-upper": 6
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_shirt-jacket",
+     "trigger": "ch09_o01",
+     "images": 1,
+     "dropped_duplicates": 5,
+     "top_clothing": [
+      "shirt",
+      "jacket"
+     ]
+    }
+   ]
+  },
+  {
+   "folder": "char_10_brown-hair-blue-eyes",
+   "trigger": "ch10",
+   "crops": 6,
+   "views": {
+    "front-close": 3,
+    "front-head-cut": 1,
+    "side-close": 2
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_shirt",
+     "trigger": "ch10_o01",
+     "images": 1,
+     "dropped_duplicates": 0,
+     "top_clothing": [
+      "shirt"
+     ]
+    },
+    {
+     "folder": "outfit_00_不明（衣装が写らない）",
+     "trigger": "ch10_o00",
+     "images": 3,
+     "dropped_duplicates": 2,
+     "top_clothing": []
+    }
+   ]
+  },
+  {
+   "folder": "char_11_brown-hair",
+   "trigger": "ch11",
+   "crops": 6,
+   "views": {
+    "back-other": 5,
+    "back-upper": 1
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_shirt-white-shirt",
+     "trigger": "ch11_o01",
+     "images": 6,
+     "dropped_duplicates": 0,
+     "top_clothing": [
+      "shirt",
+      "white shirt"
+     ]
+    }
+   ]
+  },
+  {
+   "folder": "char_12_brown-hair-black-eyes",
+   "trigger": "ch12",
+   "crops": 6,
+   "views": {
+    "side-full": 6
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_shirt-skirt",
+     "trigger": "ch12_o01",
+     "images": 3,
+     "dropped_duplicates": 3,
+     "top_clothing": [
+      "shirt",
+      "skirt"
+     ]
+    }
+   ]
+  },
+  {
+   "folder": "char_13_blonde-hair-brown-eyes",
+   "trigger": "ch13",
+   "crops": 6,
+   "views": {
+    "front-other": 5,
+    "front-lower-cut": 1
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_shirt-skirt",
+     "trigger": "ch13_o01",
+     "images": 4,
+     "dropped_duplicates": 2,
+     "top_clothing": [
+      "shirt",
+      "skirt"
+     ]
+    }
+   ]
+  },
+  {
+   "folder": "char_14_blonde-hair-red-eyes",
+   "trigger": "ch14",
+   "crops": 6,
+   "views": {
+    "front-other": 6
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_skirt-jacket",
+     "trigger": "ch14_o01",
+     "images": 2,
+     "dropped_duplicates": 4,
+     "top_clothing": [
+      "skirt",
+      "jacket"
+     ]
+    }
+   ]
+  },
+  {
+   "folder": "char_15_blonde-hair-blue-eyes",
+   "trigger": "ch15",
+   "crops": 6,
+   "views": {
+    "front-upper": 6
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_shirt-white-shirt",
+     "trigger": "ch15_o01",
+     "images": 2,
+     "dropped_duplicates": 4,
+     "top_clothing": [
+      "shirt",
+      "white shirt"
+     ]
+    }
+   ]
+  },
+  {
+   "folder": "char_16_blonde-hair-blue-eyes",
+   "trigger": "ch16",
+   "crops": 6,
+   "views": {
+    "front-other": 3,
+    "front-upper": 3
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_shirt-white-shirt",
+     "trigger": "ch16_o01",
+     "images": 5,
+     "dropped_duplicates": 1,
+     "top_clothing": [
+      "shirt",
+      "white shirt"
+     ]
+    }
+   ]
+  },
+  {
+   "folder": "char_17_brown-hair-red-eyes",
+   "trigger": "ch17",
+   "crops": 6,
+   "views": {
+    "front-full": 1,
+    "front-other": 5
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_shirt-skirt",
+     "trigger": "ch17_o01",
+     "images": 3,
+     "dropped_duplicates": 3,
+     "top_clothing": [
+      "shirt",
+      "skirt"
+     ]
+    }
+   ]
+  },
+  {
+   "folder": "char_18_brown-hair-hair-between-eyes",
+   "trigger": "ch18",
+   "crops": 5,
+   "views": {
+    "front-close": 5
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_shirt-white-shirt",
+     "trigger": "ch18_o01",
+     "images": 1,
+     "dropped_duplicates": 4,
+     "top_clothing": [
+      "shirt",
+      "white shirt"
+     ]
+    }
+   ]
+  },
+  {
+   "folder": "char_19_pink-hair-hair-between-eyes",
+   "trigger": "ch19",
+   "crops": 5,
+   "views": {
+    "front-close": 4,
+    "front-other": 1
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_shirt-hoodie",
+     "trigger": "ch19_o01",
+     "images": 3,
+     "dropped_duplicates": 2,
+     "top_clothing": [
+      "shirt",
+      "hoodie"
+     ]
+    }
+   ]
+  },
+  {
+   "folder": "char_20_brown-hair-purple-eyes",
+   "trigger": "ch20",
+   "crops": 5,
+   "views": {
+    "front-other": 5
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_shirt-jacket",
+     "trigger": "ch20_o01",
+     "images": 4,
+     "dropped_duplicates": 1,
+     "top_clothing": [
+      "shirt",
+      "jacket"
+     ]
+    }
+   ]
+  },
+  {
+   "folder": "char_21_brown-hair-purple-eyes",
+   "trigger": "ch21",
+   "crops": 5,
+   "views": {
+    "side-other": 3,
+    "side-full": 2
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_shirt-skirt",
+     "trigger": "ch21_o01",
+     "images": 3,
+     "dropped_duplicates": 2,
+     "top_clothing": [
+      "shirt",
+      "skirt"
+     ]
+    }
+   ]
+  },
+  {
+   "folder": "char_22_brown-hair-blue-eyes",
+   "trigger": "ch22",
+   "crops": 5,
+   "views": {
+    "front-upper": 5
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_shirt-school-uniform",
+     "trigger": "ch22_o01",
+     "images": 3,
+     "dropped_duplicates": 2,
+     "top_clothing": [
+      "shirt",
+      "school uniform"
+     ]
+    }
+   ]
+  },
+  {
+   "folder": "char_23_brown-hair-purple-eyes",
+   "trigger": "ch23",
+   "crops": 4,
+   "views": {
+    "front-other": 1,
+    "back-other": 3
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_skirt-jacket",
+     "trigger": "ch23_o01",
+     "images": 4,
+     "dropped_duplicates": 0,
+     "top_clothing": [
+      "skirt",
+      "jacket"
+     ]
+    }
+   ]
+  },
+  {
+   "folder": "char_24_brown-hair",
+   "trigger": "ch24",
+   "crops": 4,
+   "views": {
+    "back-other": 3,
+    "back-upper": 1
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_shirt-white-shirt",
+     "trigger": "ch24_o01",
+     "images": 2,
+     "dropped_duplicates": 2,
+     "top_clothing": [
+      "shirt",
+      "white shirt"
+     ]
+    }
+   ]
+  },
+  {
+   "folder": "char_25_brown-hair-blue-eyes",
+   "trigger": "ch25",
+   "crops": 4,
+   "views": {
+    "front-other": 4
+   },
+   "outfits": [
+    {
+     "folder": "outfit_01_jacket-necktie",
+     "trigger": "ch25_o01",
+     "images": 2,
+     "dropped_duplicates": 2,
+     "top_clothing": [
+      "jacket",
+      "necktie"
+     ]
+    }
+   ]
+  }
+ ],
+ "unassigned_images": 164,
+ "images_written": 253,
+ "wall_clock_s": 371.3,
+ "per_output_image_s": 0.89,
+ "per_output_image_excl_model_load_s": 0.85,
+ "view_distribution_all_crops": {
+  "front-close": 86,
+  "front-upper": 84,
+  "side-upper": 21,
+  "side-cowboy": 17,
+  "side-full": 37,
+  "front-other": 152,
+  "side-other": 14,
+  "front-head-cut": 9,
+  "back-other": 45,
+  "back-upper": 11,
+  "front-full": 22,
+  "back-lower-cut": 1,
+  "side-close": 4,
+  "back-full": 4,
+  "front-cowboy": 7,
+  "front-lower-cut": 5,
+  "back-close": 2,
+  "side-lower-cut": 7
+ },
+ "timing": {
+  "0 モデル読込（初回のみ）": {
+   "total_s": 17.44,
+   "count": 1,
+   "per_unit_s": 17.442
+  },
+  "1 シーン検出（動画全体）": {
+   "total_s": 12.09,
+   "count": 1,
+   "per_unit_s": 12.092
+  },
+  "2 フレーム選定（1シーン複数枚・前後フレームで画質判定）": {
+   "total_s": 52.42,
+   "count": 150,
+   "per_unit_s": 0.349
+  },
+  "3 人物検出＋人物マスク（YOLO seg・1フレーム）": {
+   "total_s": 13.56,
+   "count": 388,
+   "per_unit_s": 0.035
+  },
+  "4 背景マスクで切り抜き範囲を補正（BiRefNet・1人物）": {
+   "total_s": 84.11,
+   "count": 350,
+   "per_unit_s": 0.24
+  },
+  "5 サイズ統一（長辺指定・アップスケーラー併用・1枚）": {
+   "total_s": 41.99,
+   "count": 528,
+   "per_unit_s": 0.08
+  },
+  "6 タグ判定（WD14 eva02-large・GPU・1枚）": {
+   "total_s": 35.3,
+   "count": 528,
+   "per_unit_s": 0.067
+  },
+  "6b 見た目の特徴量（CLIP埋め込み・GPU・1枚）": {
+   "total_s": 4.01,
+   "count": 528,
+   "per_unit_s": 0.008
+  },
+  "7 キャラ・衣装の仕分け（タグ＋CLIPの類似度・追跡・同一フレーム別人の制約・単連結）": {
+   "total_s": 1.28,
+   "count": 528,
+   "per_unit_s": 0.002
+  },
+  "8 書き出し（重複除去・フォルダ・TXT）": {
+   "total_s": 2.25,
+   "count": 528,
+   "per_unit_s": 0.004
+  }
+ },
+ "gpu": "RTX 3090 Ti (YOLO seg / BiRefNet / upscaler / WD14 ONNX-CUDA)"
+}

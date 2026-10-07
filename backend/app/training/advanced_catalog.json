@@ -1,0 +1,1108 @@
+[
+  {
+    "group": "最適化・学習率",
+    "key": "gradient_accumulation_steps",
+    "label": "勾配の累積回数",
+    "type": "int",
+    "default": 1,
+    "min": 1,
+    "max": 2147483647,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      361,
+      "\"--gradient_accumulation_steps\","
+    ]
+  },
+  {
+    "group": "最適化・学習率",
+    "key": "lr_warmup_steps",
+    "label": "ウォームアップ（step）",
+    "type": "int",
+    "default": 0,
+    "min": 0,
+    "max": 2147483647,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      133,
+      "\"--lr_warmup_steps\","
+    ]
+  },
+  {
+    "group": "最適化・学習率",
+    "key": "lr_scheduler_num_cycles",
+    "label": "スケジューラの周期数",
+    "type": "int",
+    "default": 1,
+    "min": 0,
+    "max": 2147483647,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      147,
+      "\"--lr_scheduler_num_cycles\","
+    ]
+  },
+  {
+    "group": "最適化・学習率",
+    "key": "seed",
+    "label": "学習シード",
+    "type": "int",
+    "default": 42,
+    "min": 0,
+    "max": 2147483647,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\anima_minimal_inference.py",
+      90,
+      "parser.add_argument(\"--seed\", type=int, default=None, help=\"Seed for evaluation.\")"
+    ]
+  },
+  {
+    "group": "最適化・学習率",
+    "key": "max_grad_norm",
+    "label": "勾配クリップ上限",
+    "type": "float",
+    "default": 1,
+    "min": 0,
+    "max": 100,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      89,
+      "\"--max_grad_norm\","
+    ]
+  },
+  {
+    "group": "最適化・学習率",
+    "key": "lr_scheduler_power",
+    "label": "Polynomialの指数",
+    "type": "float",
+    "default": 1,
+    "min": 0.01,
+    "max": 100,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      153,
+      "\"--lr_scheduler_power\","
+    ]
+  },
+  {
+    "group": "最適化・学習率",
+    "key": "optimizer_args",
+    "label": "Optimizer追加引数",
+    "type": "lines",
+    "default": [],
+    "min": null,
+    "max": null,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "1行に1つ、例 betas=0.9,0.99。選択したOptimizerが受け取る引数です。",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      96,
+      "\"--optimizer_args\","
+    ]
+  },
+  {
+    "group": "最適化・学習率",
+    "key": "lr_scheduler_args",
+    "label": "スケジューラ追加引数",
+    "type": "lines",
+    "default": [],
+    "min": null,
+    "max": null,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "1行に1つ key=value。スケジューラ固有の引数を指定します。",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      119,
+      "\"--lr_scheduler_args\","
+    ]
+  },
+  {
+    "group": "LoRA・学習対象",
+    "key": "network_dropout",
+    "label": "ニューロンDropout",
+    "type": "float",
+    "default": 0,
+    "min": 0,
+    "max": 0.99,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\sdxl_train_control_net_lllite.py",
+      625,
+      "\"--network_dropout\","
+    ]
+  },
+  {
+    "group": "LoRA・学習対象",
+    "key": "network_train_unet_only",
+    "label": "本体のみ学習（Text Encoderを固定）",
+    "type": "bool",
+    "default": true,
+    "min": null,
+    "max": null,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\sdxl_train_leco.py",
+      87,
+      "\"--network_train_unet_only\","
+    ]
+  },
+  {
+    "group": "LoRA・学習対象",
+    "key": "unet_lr",
+    "label": "本体の学習率",
+    "type": "float",
+    "default": 0.0001,
+    "min": 1e-08,
+    "max": 1,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\sdxl_train_leco.py",
+      93,
+      "parser.add_argument(\"--unet_lr\", type=float, default=None, help=\"learning rate for U-Net / U-Netの学習率\")"
+    ]
+  },
+  {
+    "group": "LoRA・学習対象",
+    "key": "text_encoder_lr",
+    "label": "Text Encoderの学習率",
+    "type": "float",
+    "default": 1e-05,
+    "min": 1e-08,
+    "max": 1,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\train_network.py",
+      1899,
+      "\"--text_encoder_lr\","
+    ]
+  },
+  {
+    "group": "精度・メモリ",
+    "key": "mixed_precision",
+    "label": "計算精度",
+    "type": "choice",
+    "default": "bf16",
+    "min": null,
+    "max": null,
+    "choices": [
+      "no",
+      "fp16",
+      "bf16"
+    ],
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      367,
+      "\"--mixed_precision\","
+    ],
+    "family_defaults": {
+      "sdxl": "fp16"
+    }
+  },
+  {
+    "group": "精度・メモリ",
+    "key": "save_precision",
+    "label": "保存精度",
+    "type": "choice",
+    "default": "fp16",
+    "min": null,
+    "max": null,
+    "choices": [
+      "float",
+      "fp16",
+      "bf16"
+    ],
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      226,
+      "\"--save_precision\","
+    ]
+  },
+  {
+    "group": "精度・メモリ",
+    "key": "gradient_checkpointing",
+    "label": "勾配チェックポイント",
+    "type": "bool",
+    "default": true,
+    "min": null,
+    "max": null,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      358,
+      "\"--gradient_checkpointing\", action=\"store_true\", help=\"enable gradient checkpointing / gradient checkpointingを有効にする\""
+    ]
+  },
+  {
+    "group": "精度・メモリ",
+    "key": "cache_text_encoder_outputs",
+    "label": "Text Encoder出力をキャッシュ",
+    "type": "bool",
+    "default": false,
+    "min": null,
+    "max": null,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      640,
+      "\"--cache_text_encoder_outputs\", action=\"store_true\", help=\"cache text encoder outputs / text encoderの出力をキャッシュする\""
+    ],
+    "family_defaults": {
+      "anima": true
+    }
+  },
+  {
+    "group": "精度・メモリ",
+    "key": "cache_text_encoder_outputs_to_disk",
+    "label": "Text Encoderキャッシュをディスク保存",
+    "type": "bool",
+    "default": false,
+    "min": null,
+    "max": null,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      643,
+      "\"--cache_text_encoder_outputs_to_disk\","
+    ],
+    "family_defaults": {
+      "anima": true
+    }
+  },
+  {
+    "group": "精度・メモリ",
+    "key": "persistent_data_loader_workers",
+    "label": "データ読込workerを維持",
+    "type": "bool",
+    "default": false,
+    "min": null,
+    "max": null,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      352,
+      "\"--persistent_data_loader_workers\","
+    ]
+  },
+  {
+    "group": "精度・メモリ",
+    "key": "max_data_loader_n_workers",
+    "label": "データ読込worker数",
+    "type": "int",
+    "default": 0,
+    "min": 0,
+    "max": 16,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "0は学習プロセス内で読み込み。Windowsでキャッシュ済みの場合の起動待ちを減らします。",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      346,
+      "\"--max_data_loader_n_workers\","
+    ]
+  },
+  {
+    "group": "精度・メモリ",
+    "key": "vae_batch_size",
+    "label": "VAEキャッシュのバッチ",
+    "type": "int",
+    "default": 1,
+    "min": 1,
+    "max": 64,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\gen_img.py",
+      3232,
+      "\"--vae_batch_size\","
+    ]
+  },
+  {
+    "group": "精度・メモリ",
+    "key": "xformers",
+    "label": "xFormersを使う",
+    "type": "bool",
+    "default": true,
+    "min": null,
+    "max": null,
+    "choices": null,
+    "families": [
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\gen_img.py",
+      3312,
+      "parser.add_argument(\"--xformers\", action=\"store_true\", help=\"use xformers / xformersを使用し高速化する\")"
+    ]
+  },
+  {
+    "group": "キャプション・画像拡張",
+    "key": "shuffle_caption",
+    "label": "タグの順序をシャッフル",
+    "type": "bool",
+    "default": false,
+    "min": null,
+    "max": null,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      898,
+      "\"--shuffle_caption\", action=\"store_true\", help=\"shuffle separated caption / 区切られたcaptionの各要素をshuffleする\""
+    ],
+    "family_defaults": {
+      "sdxl": true
+    }
+  },
+  {
+    "group": "キャプション・画像拡張",
+    "key": "flip_aug",
+    "label": "左右反転",
+    "type": "bool",
+    "default": false,
+    "min": null,
+    "max": null,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      951,
+      "\"--flip_aug\", action=\"store_true\", help=\"enable horizontal flip augmentation / 学習時に左右反転のaugmentationを有効にする\""
+    ]
+  },
+  {
+    "group": "キャプション・画像拡張",
+    "key": "color_aug",
+    "label": "色のランダム変化",
+    "type": "bool",
+    "default": false,
+    "min": null,
+    "max": null,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      948,
+      "\"--color_aug\", action=\"store_true\", help=\"enable weak color augmentation / 学習時に色合いのaugmentationを有効にする\""
+    ]
+  },
+  {
+    "group": "キャプション・画像拡張",
+    "key": "random_crop",
+    "label": "ランダム切り抜き",
+    "type": "bool",
+    "default": false,
+    "min": null,
+    "max": null,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      960,
+      "\"--random_crop\","
+    ]
+  },
+  {
+    "group": "キャプション・画像拡張",
+    "key": "keep_tokens",
+    "label": "シャッフル時に先頭から固定するタグ数",
+    "type": "int",
+    "default": 1,
+    "min": 0,
+    "max": 512,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      911,
+      "\"--keep_tokens\","
+    ]
+  },
+  {
+    "group": "キャプション・画像拡張",
+    "key": "caption_dropout_rate",
+    "label": "キャプション全体のDropout",
+    "type": "float",
+    "default": 0,
+    "min": 0,
+    "max": 1,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      1073,
+      "\"--caption_dropout_rate\", type=float, default=0.0, help=\"Rate out dropout caption(0.0~1.0) / captionをdropoutする割合\""
+    ]
+  },
+  {
+    "group": "キャプション・画像拡張",
+    "key": "caption_tag_dropout_rate",
+    "label": "各タグのDropout",
+    "type": "float",
+    "default": 0,
+    "min": 0,
+    "max": 1,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      1082,
+      "\"--caption_tag_dropout_rate\","
+    ]
+  },
+  {
+    "group": "キャプション・画像拡張",
+    "key": "caption_dropout_every_n_epochs",
+    "label": "キャプションを外すエポック間隔（0＝無効）",
+    "type": "int",
+    "default": 0,
+    "min": 0,
+    "max": 1000,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      1076,
+      "\"--caption_dropout_every_n_epochs\","
+    ]
+  },
+  {
+    "group": "解像度・バケット",
+    "key": "enable_bucket",
+    "label": "縦横比バケットを使う",
+    "type": "bool",
+    "default": true,
+    "min": null,
+    "max": null,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      995,
+      "\"--enable_bucket\","
+    ]
+  },
+  {
+    "group": "解像度・バケット",
+    "key": "bucket_no_upscale",
+    "label": "バケットで拡大しない",
+    "type": "bool",
+    "default": false,
+    "min": null,
+    "max": null,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      1027,
+      "\"--bucket_no_upscale\","
+    ]
+  },
+  {
+    "group": "解像度・バケット",
+    "key": "min_bucket_reso",
+    "label": "バケット最小辺",
+    "type": "int",
+    "default": 256,
+    "min": 16,
+    "max": 4096,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      1000,
+      "\"--min_bucket_reso\","
+    ]
+  },
+  {
+    "group": "解像度・バケット",
+    "key": "max_bucket_reso",
+    "label": "バケット最大辺",
+    "type": "int",
+    "default": 2048,
+    "min": 16,
+    "max": 4096,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      1007,
+      "\"--max_bucket_reso\","
+    ]
+  },
+  {
+    "group": "解像度・バケット",
+    "key": "bucket_reso_steps",
+    "label": "バケットの刻み",
+    "type": "int",
+    "default": 64,
+    "min": 16,
+    "max": 4096,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      1021,
+      "\"--bucket_reso_steps\","
+    ]
+  },
+  {
+    "group": "損失関数",
+    "key": "loss_type",
+    "label": "損失関数",
+    "type": "choice",
+    "default": "l2",
+    "min": null,
+    "max": null,
+    "choices": [
+      "l1",
+      "l2",
+      "huber",
+      "smooth_l1"
+    ],
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      519,
+      "\"--loss_type\","
+    ]
+  },
+  {
+    "group": "損失関数",
+    "key": "huber_schedule",
+    "label": "Huberスケジュール",
+    "type": "choice",
+    "default": "constant",
+    "min": null,
+    "max": null,
+    "choices": [
+      "constant",
+      "exponential",
+      "snr"
+    ],
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      526,
+      "\"--huber_schedule\","
+    ]
+  },
+  {
+    "group": "損失関数",
+    "key": "huber_c",
+    "label": "Huber C",
+    "type": "float",
+    "default": 0.1,
+    "min": 1e-06,
+    "max": 100,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      534,
+      "\"--huber_c\","
+    ]
+  },
+  {
+    "group": "損失関数",
+    "key": "huber_scale",
+    "label": "Huber倍率",
+    "type": "float",
+    "default": 1,
+    "min": 1e-06,
+    "max": 100,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      542,
+      "\"--huber_scale\","
+    ]
+  },
+  {
+    "group": "SDXL・ノイズ",
+    "key": "min_snr_gamma",
+    "label": "Min-SNR gamma（0＝無効）",
+    "type": "float",
+    "default": 5,
+    "min": 0,
+    "max": 20,
+    "choices": null,
+    "families": [
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\custom_train_functions.py",
+      117,
+      "\"--min_snr_gamma\","
+    ]
+  },
+  {
+    "group": "SDXL・ノイズ",
+    "key": "noise_offset",
+    "label": "ノイズオフセット",
+    "type": "float",
+    "default": 0,
+    "min": 0,
+    "max": 20,
+    "choices": null,
+    "families": [
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      454,
+      "\"--noise_offset\","
+    ]
+  },
+  {
+    "group": "SDXL・ノイズ",
+    "key": "multires_noise_discount",
+    "label": "多解像度ノイズの減衰",
+    "type": "float",
+    "default": 0.3,
+    "min": 0,
+    "max": 20,
+    "choices": null,
+    "families": [
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      490,
+      "\"--multires_noise_discount\","
+    ]
+  },
+  {
+    "group": "損失関数",
+    "key": "ip_noise_gamma",
+    "label": "入力摂動ノイズ gamma",
+    "type": "float",
+    "default": 0,
+    "min": 0,
+    "max": 20,
+    "choices": null,
+    "families": [
+      "anima",
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      471,
+      "\"--ip_noise_gamma\","
+    ]
+  },
+  {
+    "group": "SDXL・ノイズ",
+    "key": "multires_noise_iterations",
+    "label": "多解像度ノイズの反復",
+    "type": "int",
+    "default": 0,
+    "min": 0,
+    "max": 20,
+    "choices": null,
+    "families": [
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      465,
+      "\"--multires_noise_iterations\","
+    ]
+  },
+  {
+    "group": "SDXL・ノイズ",
+    "key": "debiased_estimation_loss",
+    "label": "Debiased loss",
+    "type": "bool",
+    "default": false,
+    "min": null,
+    "max": null,
+    "choices": null,
+    "families": [
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\custom_train_functions.py",
+      134,
+      "\"--debiased_estimation_loss\","
+    ]
+  },
+  {
+    "group": "SDXL・ノイズ",
+    "key": "max_token_length",
+    "label": "最大トークン長",
+    "type": "choice",
+    "default": 225,
+    "min": null,
+    "max": null,
+    "choices": [
+      75,
+      150,
+      225
+    ],
+    "families": [
+      "sdxl"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\args.py",
+      288,
+      "\"--max_token_length\","
+    ]
+  },
+  {
+    "group": "Anima・時間分布",
+    "key": "timestep_sampling",
+    "label": "Timestep sampling",
+    "type": "choice",
+    "default": "sigmoid",
+    "min": null,
+    "max": null,
+    "choices": [
+      "sigma",
+      "uniform",
+      "sigmoid",
+      "shift",
+      "flux_shift"
+    ],
+    "families": [
+      "anima"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\hunyuan_image_train_network.py",
+      652,
+      "\"--timestep_sampling\","
+    ]
+  },
+  {
+    "group": "Anima・時間分布",
+    "key": "discrete_flow_shift",
+    "label": "Flow shift",
+    "type": "float",
+    "default": 1,
+    "min": 0.01,
+    "max": 100,
+    "choices": null,
+    "families": [
+      "anima"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\hunyuan_image_train_network.py",
+      674,
+      "\"--discrete_flow_shift\","
+    ]
+  },
+  {
+    "group": "Anima・時間分布",
+    "key": "sigmoid_scale",
+    "label": "Sigmoid scale",
+    "type": "float",
+    "default": 1,
+    "min": 0.01,
+    "max": 100,
+    "choices": null,
+    "families": [
+      "anima"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\hunyuan_image_train_network.py",
+      659,
+      "\"--sigmoid_scale\","
+    ]
+  },
+  {
+    "group": "Anima・エンコーダ",
+    "key": "qwen3_max_token_length",
+    "label": "Qwen3最大トークン長",
+    "type": "int",
+    "default": 512,
+    "min": 1,
+    "max": 4096,
+    "choices": null,
+    "families": [
+      "anima"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\anima_train_utils.py",
+      85,
+      "\"--qwen3_max_token_length\","
+    ]
+  },
+  {
+    "group": "Anima・エンコーダ",
+    "key": "t5_max_token_length",
+    "label": "T5最大トークン長",
+    "type": "int",
+    "default": 512,
+    "min": 1,
+    "max": 4096,
+    "choices": null,
+    "families": [
+      "anima"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\library\\anima_train_utils.py",
+      91,
+      "\"--t5_max_token_length\","
+    ]
+  },
+  {
+    "group": "Anima・エンコーダ",
+    "key": "attn_mode",
+    "label": "Attention方式",
+    "type": "choice",
+    "default": "torch",
+    "min": null,
+    "max": null,
+    "choices": [
+      "torch",
+      "xformers"
+    ],
+    "families": [
+      "anima"
+    ],
+    "help": "xFormersはsplit attentionも有効にしてください。推論専用SageAttentionは選択肢に含めません。",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\anima_minimal_inference.py",
+      108,
+      "\"--attn_mode\","
+    ]
+  },
+  {
+    "group": "Anima・エンコーダ",
+    "key": "split_attn",
+    "label": "Split attention",
+    "type": "bool",
+    "default": false,
+    "min": null,
+    "max": null,
+    "choices": null,
+    "families": [
+      "anima"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\hunyuan_image_train_network.py",
+      700,
+      "\"--split_attn\","
+    ]
+  },
+  {
+    "group": "Anima・エンコーダ",
+    "key": "vae_disable_cache",
+    "label": "VAE内部キャッシュを無効化",
+    "type": "bool",
+    "default": true,
+    "min": null,
+    "max": null,
+    "choices": null,
+    "families": [
+      "anima"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\anima_minimal_inference.py",
+      62,
+      "\"--vae_disable_cache\","
+    ]
+  },
+  {
+    "group": "Anima・エンコーダ",
+    "key": "qwen_image_vae_2d",
+    "label": "画像専用2D VAEを使用",
+    "type": "bool",
+    "default": true,
+    "min": null,
+    "max": null,
+    "choices": null,
+    "families": [
+      "anima"
+    ],
+    "help": "",
+    "source": [
+      "C:\\kohya_ss\\sd-scripts\\anima_minimal_inference.py",
+      68,
+      "\"--qwen_image_vae_2d\","
+    ]
+  }
+]

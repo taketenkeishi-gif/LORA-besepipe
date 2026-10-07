@@ -1,0 +1,25 @@
+{
+  "images": [
+    {
+      "src": "http://127.0.0.1:5175/api/collector/thumbnail?path=C%3A%5CUsers%5CKeishi%5CPortfolio%5CGeneration%5CTraining%5CLoRA-Studio-Next%5Cprojects%5CKeytar%20Fox%20Character%5Cdataset%5Creferences%5C17c00bd73930-241224ef-3199-4454-a778-7f22b23a9d22.png&size=512&v=1787224000824507600",
+      "loaded": true
+    },
+    {
+      "src": "http://127.0.0.1:5175/api/collector/thumbnail?path=C%3A%5CUsers%5CKeishi%5CPortfolio%5CGeneration%5CTraining%5CLoRA-Studio-Next%5Cprojects%5CKeytar%20Fox%20Character%5Cdataset%5Creferences%5C44909eef97d0-a56279ba-e0ea-4dce-9773-5d9e6bf43b91.png&size=512&v=1787224002197866500",
+      "loaded": true
+    },
+    {
+      "src": "http://127.0.0.1:5175/api/collector/thumbnail?path=C%3A%5CUsers%5CKeishi%5CPortfolio%5CGeneration%5CTraining%5CLoRA-Studio-Next%5Cprojects%5CKeytar%20Fox%20Character%5Cdataset%5Creferences%5Ce1d23131ec19-e47da1c2-6370-43a7-85d0-7c6b598c7a19.png&size=512&v=1787224000194971000",
+      "loaded": true
+    },
+    {
+      "src": "http://127.0.0.1:5175/api/collector/thumbnail?path=C%3A%5CUsers%5CKeishi%5CPortfolio%5CGeneration%5CTraining%5CLoRA-Studio-Next%5Cprojects%5CKeytar%20Fox%20Character%5Cdataset%5Creferences%5Ce9f84a11a3ce-7db3d31c-5cae-472a-a09e-1fd35a5d04bc.png&size=512&v=1787224001511720000",
+      "loaded": true
+    },
+    {
+      "src": "http://127.0.0.1:5175/api/collector/thumbnail?path=C%3A%5CUsers%5CKeishi%5CPortfolio%5CGeneration%5CTraining%5CLoRA-Studio-Next%5Cprojects%5CKeytar%20Fox%20Character%5Cdataset%5Creferences%5Cthumbnail.jpg&size=512&v=1789808589775748000",
+      "loaded": true
+    }
+  ],
+  "errors": []
+}

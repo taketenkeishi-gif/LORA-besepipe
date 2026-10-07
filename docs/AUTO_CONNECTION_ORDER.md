@@ -1,0 +1,10 @@
+# Automatic ComfyUI connection and setup order — 2026-09-21
+User asked automatic connection, manual path only when detection fails, no leading connection control, fewer redundant headers and better order.
+
+Changes under frontend/src/features/studio:
+- autoComfyConnection.ts: deduplicated30second Promise, inspect saved binding first; on failure discover and validate/bind unique saved endpoint or unique designated RTX3090Ti candidate. Ambiguous/unavailable results return error, no guessed selection. No app startup, GPU unload, rendering or external process termination.
+- TrainingDock.tsx: auto connection at mount/project change; model inventory refreshed after success. Compact status near auto-preview, retry/manual button only on error (all model families). Removed leading connection button and repeated 学習 header; dataset/GPU/draft status in one row; model family/save name before checkpoint selection. Existing explicit model path retained per user's prior requirement.
+- Workbench.tsx: removed duplicate project name next to back button; project tab still identifies project.
+
+Runtime: work/advanced-training/auto-native-result.json real hidden Electron bridge. Existing valid configuration connected with no click; corrupted root in isolated test DB automatically recovered from live ComfyUI root, test original restored. No manual controls on success. auto-failure-ui.json uses explicitly simulated unavailable bridge: actual UI retry increased inspect calls and manual path fields appeared; no bind/render dispatch. No claim this simulated case was real ComfyUI downtime.
+Build index-B853wi5G.js loaded by normal production native reopen; backend/jobs not restarted. Shared FREQ-01/density principles already existed; SETUP-01 added to product-ui-craft references/11-interaction-requirements.md for newly explicit automatic setup/failure recovery condition. quick_validate passed in UTF8 mode. Source thread01a0b7d6-ceaf-72e0-996b-9965958178f8; turn/user-message UNKNOWN. Shared rule does not hardcode local ports/GPU. AESTHETIC_UNREVIEWED; whole pipeline audit remains incomplete.

@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import io
+import hashlib
 import json
 import logging
+import shutil
+import tempfile
 import threading
 from pathlib import Path
 
@@ -58,13 +62,37 @@ def _is_monochrome(path: str) -> bool:
 
 
 # ── pHash計算 ─────────────────────────────────────────────────────────────
-def _compute_phash(path: str):
+# 256bit phash で細部まで識別（64bitより誤検出が大幅に減る）。
+_HASH_SIZE = 16
+# 距離しきい値（256bit中のハミング距離）
+_DUP_THRESHOLD = 6       # ほぼ同一: 再保存/リサイズ/軽微編集/ミラー複製
+_SIMILAR_THRESHOLD = 22  # 同一構図・トリミング違いなど
+
+
+def _compute_signature(path: str):
+    """phash(256bit) と左右反転版のタプルを返す。
+    反転版も持つことでミラー(左右反転)複製を検出できる。
+    RGB へ変換して alpha 由来のハッシュ乱れを防ぐ。"""
     try:
         import imagehash
         with Image.open(path) as im:
-            return imagehash.phash(im)
+            rgb = im.convert("RGB")
+            ph = imagehash.phash(rgb, hash_size=_HASH_SIZE)
+            ph_flip = imagehash.phash(rgb.transpose(Image.FLIP_LEFT_RIGHT), hash_size=_HASH_SIZE)
+        return (ph, ph_flip)
     except Exception:
         return None
+
+
+def _sig_distance(a, b) -> int:
+    """2署名間の最小ハミング距離（左右反転を考慮）。"""
+    return min(a[0] - b[0], a[0] - b[1], a[1] - b[0])
+
+
+# 後方互換: 単体phashが必要な箇所向け
+def _compute_phash(path: str):
+    sig = _compute_signature(path)
+    return sig[0] if sig else None
 
 
 # ── 品質スコア計算（§8.3） ───────────────────────────────────────────────
@@ -148,9 +176,8 @@ def _run_analysis(project_id: int) -> None:
 
     # pHash計算 + 類似グループ検出
     _set_status(project_id, "running", "pHash計算中...")
-    hashes: list[tuple[int, object]] = []
     try:
-        import imagehash
+        import imagehash  # noqa: F401
         _imagehash_available = True
     except ImportError:
         _imagehash_available = False
@@ -160,36 +187,70 @@ def _run_analysis(project_id: int) -> None:
     similar_pairs = 0
 
     if _imagehash_available:
+        sigs: list[tuple[int, object]] = []
         for item in items:
-            h = _compute_phash(item["file_path"])
-            if h is not None:
-                hashes.append((item["id"], h))
+            s = _compute_signature(item["file_path"])
+            if s is not None:
+                sigs.append((item["id"], s))
 
-        # 全ペア比較（O(n²)だが実用上は数百枚程度）
-        processed: set[int] = set()
-        for i in range(len(hashes)):
-            if hashes[i][0] in processed:
+        n = len(sigs)
+        # Union-Find で連結成分（=類似グループ）を作る。
+        # 旧実装は similar メンバーを processed に入れずグループが重複・水増ししていた。
+        parent = list(range(n))
+
+        def _find(x: int) -> int:
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def _union(a: int, b: int) -> None:
+            ra, rb = _find(a), _find(b)
+            if ra != rb:
+                parent[ra] = rb
+
+        edges: list[tuple[int, int, int]] = []
+        # 全ペア比較（O(n²)・実用上は数百〜数千枚）
+        for i in range(n):
+            for j in range(i + 1, n):
+                d = _sig_distance(sigs[i][1], sigs[j][1])
+                if d <= _SIMILAR_THRESHOLD:
+                    edges.append((i, j, d))
+                    _union(i, j)
+
+        # グループ集約
+        members_map: dict[int, list[int]] = {}
+        for idx in range(n):
+            members_map.setdefault(_find(idx), []).append(idx)
+        # グループ内の最小距離（種別判定用）
+        group_min: dict[int, int] = {}
+        for (i, j, d) in edges:
+            r = _find(i)
+            if d < group_min.get(r, 10**9):
+                group_min[r] = d
+
+        for root, members in members_map.items():
+            if len(members) < 2:
                 continue
-            group_dups = [hashes[i][0]]
-            group_sims = [hashes[i][0]]
-            for j in range(i + 1, len(hashes)):
-                if hashes[j][0] in processed:
-                    continue
-                dist = hashes[i][1] - hashes[j][1]
-                if dist == 0:
-                    group_dups.append(hashes[j][0])
-                    group_sims.append(hashes[j][0])
-                    processed.add(hashes[j][0])
-                elif dist <= 10:
-                    group_sims.append(hashes[j][0])
-            if len(group_dups) > 1:
-                similarity_groups.append({"type": "duplicate", "item_ids": group_dups})
-                processed.add(hashes[i][0])
-                duplicate_pairs += len(group_dups) - 1
-            elif len(group_sims) > 1:
-                similarity_groups.append({"type": "similar", "item_ids": group_sims})
-                processed.add(hashes[i][0])
-                similar_pairs += len(group_sims) - 1
+            item_ids = [sigs[m][0] for m in members]
+            # A perceptual-similarity edge must never authorize deletion of its
+            # entire connected component. Only byte-identical files are duplicates.
+            files_by_id = {item['id']: item['file_path'] for item in items}
+            exact: dict[str, list[int]] = {}
+            for item_id in item_ids:
+                try:
+                    with Path(files_by_id[item_id]).open('rb') as handle:
+                        digest = hashlib.file_digest(handle, 'sha256').hexdigest()
+                except OSError:
+                    digest = f'unreadable:{item_id}'
+                exact.setdefault(digest, []).append(item_id)
+            for same_files in exact.values():
+                if len(same_files) > 1:
+                    similarity_groups.append({'type': 'duplicate', 'item_ids': same_files})
+                    duplicate_pairs += len(same_files) - 1
+            if len(exact) > 1:
+                similarity_groups.append({"type": "similar", "item_ids": item_ids})
+                similar_pairs += len(exact) - 1
 
     # 品質スコア計算
     quality_score, warnings = _calc_quality_score(items, duplicate_pairs, similar_pairs)
@@ -1021,3 +1082,547 @@ def _run_feedback(
     except Exception as e:
         logger.error(f"_run_feedback failed: {e}", exc_info=True)
         _FEEDBACK_STATUS[project_id] = {"status": "failed", "message": f"失敗: {str(e)}", "step": 0}
+
+
+# ── 前処理共通定数 ────────────────────────────────────────────────────
+
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
+
+
+@router.post("/delete-items/{project_id}")
+def delete_dataset_items(project_id: int, item_ids: str, delete_files: bool = True) -> dict:
+    """データセットから画像を削除（重複・不要画像の一括/個別削除）。
+
+    delete_files=True のとき画像ファイルと .txt サイドカーを _trash フォルダへ退避する
+    （完全削除ではなくゴミ箱退避＝復元可能）。DB レコードは常に削除する。
+    """
+    ids = []
+    for x in item_ids.split(","):
+        x = x.strip()
+        if x:
+            try:
+                ids.append(int(x))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="item_ids が不正です")
+    if not ids:
+        raise HTTPException(status_code=400, detail="item_ids が空です")
+
+    conn = get_conn()
+    prow = conn.execute("SELECT dataset_dir FROM projects WHERE id = ?", (project_id,)).fetchone()
+    if prow is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="project not found")
+
+    placeholders = ",".join("?" * len(ids))
+    rows = conn.execute(
+        f"SELECT id, file_path FROM dataset_items WHERE project_id = ? AND id IN ({placeholders})",
+        (project_id, *ids),
+    ).fetchall()
+
+    trash_dir = None
+    trashed = 0
+    if delete_files and rows:
+        dataset_dir = prow["dataset_dir"] or ""
+        base = Path(dataset_dir).parent if dataset_dir else Path(rows[0]["file_path"]).parent
+        trash_dir = base / "_trash"
+        trash_dir.mkdir(parents=True, exist_ok=True)
+
+    removed = 0
+    for r in rows:
+        fp = Path(r["file_path"])
+        if delete_files and trash_dir is not None and fp.exists():
+            try:
+                dest = trash_dir / fp.name
+                i = 1
+                while dest.exists():
+                    dest = trash_dir / f"{fp.stem}_{i}{fp.suffix}"
+                    i += 1
+                shutil.move(str(fp), str(dest))
+                trashed += 1
+                # キャプション .txt サイドカーも退避
+                txt = fp.with_suffix(".txt")
+                if txt.exists():
+                    shutil.move(str(txt), str(trash_dir / txt.name))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("trash move failed for %s: %s", fp, exc)
+        conn.execute("DELETE FROM dataset_items WHERE id = ?", (r["id"],))
+        removed += 1
+
+    conn.commit()
+    conn.close()
+    return {
+        "removed_count": removed,
+        "trashed_files": trashed,
+        "trash_dir": str(trash_dir) if trash_dir else None,
+    }
+
+
+# ── 文字削除 / Dataset Refinery（SPEC §14・ComfyUI エンジン） ──────────────────
+
+_REFINERY_STATUS: dict[int, dict] = {}
+
+
+@router.get("/comfyui/status")
+def comfyui_status() -> dict:
+    """ComfyUI の到達性・必要ノード・モデルの有無を返す（doctor）。
+
+    プロセス自動起動の状態（launching/ready 等）も併せて返す。
+    """
+    from ..services.comfyui_client import ComfyUIClient
+    from ..services.comfyui_process import get_state
+
+    try:
+        result = ComfyUIClient().check_status()
+    except Exception as e:  # noqa: BLE001
+        result = {"reachable": False, "ready": False, "message": f"状態取得失敗: {e}"}
+    result["process"] = get_state()
+    return result
+
+
+@router.post("/comfyui/ensure")
+def comfyui_ensure() -> dict:
+    """ComfyUI が未起動なら起動する（手動トリガ）。起動済みなら何もしない。"""
+    from ..services.comfyui_process import ensure_running
+
+    return ensure_running(block_wait=False)
+
+
+def _resolve_target_files(project_id: int, dataset_dir: str, item_ids: list[int] | None) -> list[Path]:
+    """対象画像パスを解決。item_ids 指定があればその dataset_items、無ければ dataset_dir 全画像。"""
+    if item_ids:
+        conn = get_conn()
+        rows = conn.execute(
+            f"SELECT file_path FROM dataset_items WHERE project_id = ? AND id IN ({','.join('?' * len(item_ids))})",
+            (project_id, *item_ids),
+        ).fetchall()
+        conn.close()
+        return [Path(r["file_path"]) for r in rows if Path(r["file_path"]).exists()]
+    base = Path(dataset_dir)
+    if not base.exists():
+        return []
+    return [f for f in base.rglob("*") if f.suffix.lower() in IMAGE_EXTS]
+
+
+def _run_text_removal(project_id: int, dataset_dir: str, item_ids: list[int] | None, grow: int) -> None:
+    """ComfyUI(Florence2 OCR + LaMa)で文字削除。元画像はバックアップ後に上書き。"""
+    from ..services.comfyui_client import ComfyUIClient, ComfyUIError
+
+    _REFINERY_STATUS[project_id] = {"status": "running", "message": "ComfyUI 確認中...", "done": 0, "total": 0}
+    try:
+        client = ComfyUIClient()
+        status = client.check_status()
+        if not status.get("ready"):
+            _REFINERY_STATUS[project_id] = {
+                "status": "failed",
+                "message": status.get("message", "ComfyUI が準備できていません"),
+                "done": 0,
+                "total": 0,
+            }
+            return
+
+        lama_model = status["lama_model"]
+
+        files = _resolve_target_files(project_id, dataset_dir, item_ids)
+        total = len(files)
+        if total == 0:
+            _REFINERY_STATUS[project_id] = {"status": "failed", "message": "対象画像がありません", "done": 0, "total": 0}
+            return
+
+        # 元画像バックアップ先（dataset_dir 外。リサイズ等の再スキャン対象に含めない）
+        backup_dir = Path(dataset_dir).parent / "_refinery_backup" / "text_removal"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+
+        _REFINERY_STATUS[project_id] = {"status": "running", "message": f"0/{total} 件処理中...", "done": 0, "total": total}
+
+        done = 0
+        failed = 0
+        for f in files:
+            try:
+                out_bytes = client.remove_text(
+                    f, lama_model=lama_model, grow=grow, timeout=300.0
+                )
+                # バックアップ（既存があれば上書きしない＝最初の原本を保持）
+                bak = backup_dir / f.name
+                if not bak.exists():
+                    shutil.copy2(f, bak)
+                # ComfyUI 出力は PNG。元拡張子に合わせて保存
+                from PIL import Image as _Image
+                img = _Image.open(io.BytesIO(out_bytes))
+                ext = f.suffix.lower()
+                if ext in {".jpg", ".jpeg"}:
+                    img.convert("RGB").save(f, quality=95, optimize=True)
+                else:
+                    img.save(f)
+            except (ComfyUIError, Exception) as exc:  # noqa: BLE001
+                logger.warning("text removal failed for %s: %s", f, exc)
+                failed += 1
+            done += 1
+            _REFINERY_STATUS[project_id] = {
+                "status": "running",
+                "message": f"{done}/{total} 件処理中...",
+                "done": done,
+                "total": total,
+            }
+
+        ok = done - failed
+        _REFINERY_STATUS[project_id] = {
+            "status": "done",
+            "message": f"{ok} 件 文字削除完了" + (f"（{failed} 件失敗）" if failed else "") + f" / 原本: {backup_dir}",
+            "done": done,
+            "total": total,
+        }
+    except Exception as e:  # noqa: BLE001
+        logger.error("_run_text_removal failed: %s", e, exc_info=True)
+        _REFINERY_STATUS[project_id] = {"status": "failed", "message": f"文字削除エラー: {e}", "done": 0, "total": 0}
+
+
+@router.post("/text-removal/{project_id}")
+async def text_removal(
+    project_id: int,
+    background_tasks: BackgroundTasks,
+    grow: int = 8,
+    item_ids: str = "",
+) -> dict:
+    """文字削除を実行（ComfyUI Florence2 OCR + LaMa inpaint）。
+
+    item_ids: カンマ区切りの dataset_items.id。空なら dataset_dir 全画像が対象。
+    """
+    conn = get_conn()
+    row = conn.execute("SELECT dataset_dir FROM projects WHERE id = ?", (project_id,)).fetchone()
+    conn.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    dataset_dir = row["dataset_dir"] or ""
+    if not dataset_dir:
+        raise HTTPException(status_code=400, detail="dataset_dir が設定されていません")
+
+    if not (-64 <= grow <= 256):
+        raise HTTPException(status_code=400, detail="grow は -64〜256 の範囲で指定してください")
+
+    ids: list[int] | None = None
+    if item_ids.strip():
+        try:
+            ids = [int(x) for x in item_ids.split(",") if x.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="item_ids が不正です")
+
+    status = _REFINERY_STATUS.get(project_id, {})
+    if status.get("status") == "running":
+        return {"message": "文字削除を実行中です", "status": "running"}
+
+    background_tasks.add_task(_run_text_removal, project_id, dataset_dir, ids, grow)
+    return {"message": "文字削除を開始しました", "status": "started"}
+
+
+@router.get("/text-removal-status/{project_id}")
+def text_removal_status(project_id: int) -> dict:
+    """文字削除の進捗を返す。"""
+    return _REFINERY_STATUS.get(project_id, {"status": "idle", "message": "待機中", "done": 0, "total": 0})
+
+
+# ── 統合前処理パイプライン: Resize → Upscale → Cleanup → Caption → Save ─────
+# 実装本体は app.dataset.pipeline（PipelineStep 方式）に移動済み。
+# ここでは API バリデーションとキュー投入・設定保存/復元のみを担う。
+# 複数プロジェクトからの同時要求は enqueue() が直列化するため、ここでは
+# BackgroundTasks を使わない（queue.py のワーカースレッドが逐次実行する）。
+import json as _json  # noqa: E402
+
+from ..dataset.pipeline import (  # noqa: E402
+    cancel_queued as _pipeline_cancel_queued,
+    enqueue as _pipeline_enqueue,
+    get_pipeline_status as _get_pipeline_status,
+    is_queued as _pipeline_is_queued,
+    is_running as _pipeline_is_running,
+    read_manifest as _read_pipeline_manifest,
+    request_cancel as _pipeline_request_cancel,
+)
+
+
+def _resolve_recommended_train_dir(conn, project_id: int) -> dict | None:
+    """dataset_items(DB, キャプション付き登録済み画像の唯一の正)から、実際に
+    学習で使うべきtrain_data_dirを逆算する。
+
+    project.dataset_dir は静的な既定パスに過ぎず、Dataset Builder Pipelineや
+    kohya形式のrepeat-countフォルダ(例: 5_ProjectName)への画像整理後は、
+    実画像がdataset_dir配下ではなくexternal_dataset(library_dir)側の
+    別フォルダに存在することがある。Training画面がdataset_dirを無条件に
+    初期値としてしまうと、実際には0枚(または古い少数枚)しかスキャンされない
+    フォルダで学習を開始してしまう実UXバグがあった(実データ監査で発見)。
+    dataset_itemsに登録されたfile_pathのうち実際にディスク上に存在するものの
+    共通親ディレクトリを求め、そこを「実際にキャプション付きで使える画像が
+    ある場所」として推奨する。
+    """
+    rows = conn.execute(
+        "SELECT file_path FROM dataset_items WHERE project_id = ?", (project_id,)
+    ).fetchall()
+    existing = [Path(r["file_path"]) for r in rows if Path(r["file_path"]).exists()]
+    if not existing:
+        return None
+    parents: dict[str, int] = {}
+    for p in existing:
+        d = str(p.parent)
+        parents[d] = parents.get(d, 0) + 1
+    best_dir, count = max(parents.items(), key=lambda kv: kv[1])
+    if count < len(existing):
+        # 画像が複数フォルダに分散している場合は自動選択せず、判断材料だけ返す
+        return {"path": best_dir, "image_count": count, "total_registered": len(existing), "split_across_dirs": True}
+    return {"path": best_dir, "image_count": count, "total_registered": len(existing), "split_across_dirs": False}
+
+
+@router.get("/dataset-sources/{project_id}")
+def get_dataset_sources(project_id: int) -> dict:
+    """Training が選択できる dataset_source ("original"/"processed") の利用可否を返す。
+
+    "processed" は processed/ フォルダの存在だけでなく、Dataset Builder Pipeline の
+    完了マニフェスト(.manifest.json, 成功件数>0)がある場合のみ available=true とする。
+    """
+    conn = get_conn()
+    row = conn.execute("SELECT dataset_dir FROM projects WHERE id = ?", (project_id,)).fetchone()
+    if row is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="project not found")
+
+    processed_dir = Path(row["dataset_dir"] or "") / "processed"
+    manifest = _read_pipeline_manifest(processed_dir) if processed_dir.exists() else None
+    recommended = _resolve_recommended_train_dir(conn, project_id)
+    conn.close()
+
+    return {
+        "project_id": project_id,
+        "original": {"available": True},
+        "processed": {
+            "available": manifest is not None,
+            "manifest": manifest,
+        },
+        "recommended_train_dir": recommended,
+    }
+
+_PIPELINE_CONFIG_DEFAULTS: dict = {
+    "target_size": 1024,
+    "resize_mode": "resize_longer",
+    "use_esrgan": False,
+    "esrgan_model": "",
+    "use_qwen": False,
+    "use_caption": False,
+    "caption_general_thresh": 0.35,
+    "caption_character_thresh": 0.85,
+    "caption_remove_character_tags": False,
+}
+
+
+@router.post("/preprocess-pipeline/{project_id}")
+async def preprocess_pipeline(
+    project_id: int,
+    target_size: int = 1024,
+    resize_mode: str = "resize_longer",
+    use_esrgan: bool = False,
+    esrgan_model: str = "",
+    use_qwen: bool = False,
+    use_caption: bool = False,
+    caption_general_thresh: float = 0.35,
+    caption_character_thresh: float = 0.85,
+    caption_remove_character_tags: bool = False,
+    item_ids: str = "",
+) -> dict:
+    """統合前処理パイプラインをキューへ投入する。
+
+    処理順: Resize → ESRGAN(任意) → Qwen Cleanup(任意) → Caption(任意)
+    → dataset/processed/ に保存。元画像は変更しない（Caption有効時は
+    既存タグ編集UI互換のため dataset_items.caption と元画像の .txt のみ更新）。
+
+    複数プロジェクトから同時に呼ばれてもキューにより逐次実行される
+    （同時実行はしない）。
+    """
+    conn = get_conn()
+    row = conn.execute("SELECT id FROM projects WHERE id = ?", (project_id,)).fetchone()
+    conn.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail="project not found")
+
+    if resize_mode not in {"resize_longer", "resize_shorter", "square_crop"}:
+        raise HTTPException(status_code=400, detail=f"不正な resize_mode: {resize_mode}")
+
+    if not (64 <= target_size <= 4096):
+        raise HTTPException(status_code=400, detail="target_size は 64〜4096 の範囲で指定してください")
+
+    ids: list[int] | None = None
+    if item_ids.strip():
+        try:
+            ids = [int(x) for x in item_ids.split(",") if x.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="item_ids が不正です")
+
+    if _pipeline_is_running(project_id) or _pipeline_is_queued(project_id):
+        st = _get_pipeline_status(project_id)
+        return {"message": "パイプラインは既に実行中/キュー待機中です", "status": st.get("status", "running")}
+
+    position = _pipeline_enqueue(
+        project_id, target_size, resize_mode, use_esrgan, esrgan_model, use_qwen, ids,
+        use_caption=use_caption,
+        caption_general_thresh=caption_general_thresh,
+        caption_character_thresh=caption_character_thresh,
+        caption_remove_character_tags=caption_remove_character_tags,
+    )
+    return {
+        "message": f"前処理パイプラインをキューに追加しました（{position} 番目）",
+        "status": "queued",
+        "queue_position": position,
+    }
+
+
+@router.get("/preprocess-pipeline-status/{project_id}")
+def preprocess_pipeline_status(project_id: int) -> dict:
+    """統合前処理パイプラインの進捗を返す（items に画像ごとの成功/失敗/スキップ/理由を含む）。"""
+    return _get_pipeline_status(project_id)
+
+
+@router.post("/preprocess-pipeline-cancel/{project_id}")
+def preprocess_pipeline_cancel(project_id: int) -> dict:
+    """実行中/キュー待機中の統合前処理パイプラインにキャンセルを要求する。"""
+    if _pipeline_cancel_queued(project_id):
+        return {"message": "キュー内のジョブをキャンセルしました", "status": "cancelling"}
+    if not _pipeline_request_cancel(project_id):
+        return {"message": "実行中のパイプラインがありません", "status": "idle"}
+    return {"message": "キャンセルを要求しました", "status": "cancelling"}
+
+
+@router.get("/caption-lineage/{project_id}/{item_id}")
+def caption_lineage(project_id: int, item_id: int) -> dict:
+    """Return the immutable caption lineage without changing dataset files."""
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT d.id, d.file_path, d.caption, d.caption_source, p.dataset_dir, p.captions_dir "
+        "FROM dataset_items d JOIN projects p ON p.id = d.project_id WHERE d.project_id = ? AND d.id = ?",
+        (project_id, item_id),
+    ).fetchone()
+    conn.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail="dataset item not found")
+
+    original_path = Path(str(row["file_path"]))
+    original_txt = original_path.with_suffix(".txt")
+    captions_dir = Path(str(row["captions_dir"] or ""))
+    fallback_txt = captions_dir / f"{original_path.stem}.txt" if str(row["captions_dir"] or "") else None
+    processed_txt = Path(str(row["dataset_dir"] or "")) / "processed" / f"{original_path.stem}.txt"
+
+    def read_text(path: Path | None) -> dict:
+        if path is None or not path.exists() or not path.is_file():
+            return {"path": str(path) if path else "", "exists": False, "text": ""}
+        try:
+            return {"path": str(path), "exists": True, "text": path.read_text(encoding="utf-8")}
+        except OSError as exc:
+            return {"path": str(path), "exists": True, "text": "", "error": str(exc)}
+
+    source_file = original_txt if original_txt.exists() else fallback_txt
+    return {
+        "project_id": project_id,
+        "item_id": item_id,
+        "image_path": str(original_path),
+        "requested": {"caption_source": row["caption_source"] or "", "source_file": str(source_file) if source_file else ""},
+        "resolved": {"db_caption": row["caption"] or "", "db_caption_source": row["caption_source"] or ""},
+        "observed": {"original_caption_file": read_text(source_file), "processed_caption_file": read_text(processed_txt)},
+    }
+
+
+@router.get("/pipeline-config/{project_id}")
+def get_pipeline_config(project_id: int) -> dict:
+    """Dataset Builder の前処理パイプライン設定（Resize/Upscale/Cleanup/Caption）を返す。
+
+    未保存の場合は既定値を返す。既存 Project 構造（projects.pipeline_config_json）を
+    利用するため、新規テーブルは追加しない。
+    """
+    conn = get_conn()
+    row = conn.execute("SELECT pipeline_config_json FROM projects WHERE id = ?", (project_id,)).fetchone()
+    conn.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail="project not found")
+
+    config = dict(_PIPELINE_CONFIG_DEFAULTS)
+    raw = row["pipeline_config_json"] or "{}"
+    try:
+        saved = _json.loads(raw)
+        if isinstance(saved, dict):
+            config.update(saved)
+    except (ValueError, TypeError):
+        pass
+    return {"project_id": project_id, "config": config}
+
+
+@router.post("/pipeline-config/{project_id}")
+def save_pipeline_config(project_id: int, payload: dict) -> dict:
+    """Dataset Builder の前処理パイプライン設定を Project へ保存する。"""
+    conn = get_conn()
+    row = conn.execute("SELECT id FROM projects WHERE id = ?", (project_id,)).fetchone()
+    if row is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="project not found")
+
+    config = dict(_PIPELINE_CONFIG_DEFAULTS)
+    if isinstance(payload, dict):
+        config.update({k: v for k, v in payload.items() if k in _PIPELINE_CONFIG_DEFAULTS})
+
+    conn.execute(
+        "UPDATE projects SET pipeline_config_json = ? WHERE id = ?",
+        (_json.dumps(config, ensure_ascii=False), project_id),
+    )
+    conn.commit()
+    conn.close()
+    return {"project_id": project_id, "config": config}
+
+
+# ── Dataset Mixer (§10) ───────────────────────────────────────────────────────
+
+_DEFAULT_WEIGHTS: dict[str, int] = {
+    "face": 50,
+    "expression": 50,
+    "hair": 50,
+    "costume": 50,
+    "accessory": 50,
+    "background": 50,
+    "composition": 50,
+    "line": 50,
+    "color": 50,
+    "lighting": 50,
+    "mood": 50,
+}
+
+
+@router.get("/mixer/{project_id}")
+def get_mixer(project_id: int) -> dict:
+    """プロジェクトのフィーチャーウェイトを返す"""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT feature_weights_json, updated_at FROM dataset_mixer WHERE project_id = ?",
+            (project_id,),
+        ).fetchone()
+        if row is None:
+            return {"project_id": project_id, "feature_weights": _DEFAULT_WEIGHTS.copy(), "updated_at": None}
+        weights = {**_DEFAULT_WEIGHTS, **json.loads(row["feature_weights_json"])}
+        return {"project_id": project_id, "feature_weights": weights, "updated_at": row["updated_at"]}
+    finally:
+        conn.close()
+
+
+@router.put("/mixer/{project_id}")
+def put_mixer(project_id: int, body: dict) -> dict:
+    """フィーチャーウェイトを保存する"""
+    weights = body.get("feature_weights", {})
+    # clamp values to 0-100
+    clamped = {k: max(0, min(100, int(v))) for k, v in weights.items() if k in _DEFAULT_WEIGHTS}
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO dataset_mixer (project_id, feature_weights_json, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(project_id) DO UPDATE SET
+                feature_weights_json = excluded.feature_weights_json,
+                updated_at = excluded.updated_at
+            """,
+            (project_id, json.dumps(clamped)),
+        )
+        conn.commit()
+        return {"project_id": project_id, "feature_weights": {**_DEFAULT_WEIGHTS, **clamped}, "updated_at": None}
+    finally:
+        conn.close()

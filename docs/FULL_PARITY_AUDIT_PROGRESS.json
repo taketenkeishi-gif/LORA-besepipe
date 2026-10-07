@@ -1,0 +1,48 @@
+{
+  "goal": "full old/new semantic and runtime comparison",
+  "at": "2026-09-20T21:16:54.427342+00:00",
+  "phase": "mechanical inventory and import/API structure complete; semantic/runtime comparison in progress",
+  "counts_are_syntax_not_feature_coverage": true,
+  "counts": {
+    "old-original": {
+      "files": 134,
+      "entities": 18226,
+      "unparsed": 0
+    },
+    "old-classic": {
+      "files": 162,
+      "entities": 25272,
+      "unparsed": 0
+    },
+    "old-main": {
+      "files": 175,
+      "entities": 37844,
+      "unparsed": 0
+    },
+    "new": {
+      "files": 176,
+      "entities": 46274,
+      "unparsed": 0
+    }
+  },
+  "source_roots": "source-scope.json",
+  "structural_data": "structural-comparison.json",
+  "runtime_modes": {
+    "old-original": "original JSX, transport redirected from fixed8000 to existing5175 API, writes denied except normal read-like operations",
+    "old-main": "original JSX with existing5175 API transport",
+    "new": "source-identical UI snapshot with existing5175 API transport"
+  },
+  "known_constraints": [
+    "Isolated audit backend restart rejected by tool policy; no equivalent restart retried",
+    "Existing5194 test server expired normally",
+    "GPU execution and export/deletion writes not part of this audit run",
+    "Semantic feature groups remain UNREVIEWED until inspected; no exhaustive PASS claim"
+  ],
+  "ready_queue": [
+    "Complete per-screen UI discovery on all old/new surfaces",
+    "Map every old visible operation to current alternative, missing or intentional retirement with evidence",
+    "Review changed backend/domain functions and schema defaults, not just matching names",
+    "Build bidirectional semantic packet and execute gates, report failures honestly",
+    "Update parser-adapter references/regressions and research receipt"
+  ]
+}

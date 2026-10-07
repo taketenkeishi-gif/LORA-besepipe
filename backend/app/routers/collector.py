@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import os
 import io
 import json
 import re
@@ -90,6 +91,30 @@ def _drop_cache_dir(project_id: int) -> Path:
     return d
 
 
+def _image_is_blank(src: Path) -> bool:
+    """ほぼ単色（白紙・プレースホルダ）画像を検出する。
+    Pixiv の制限プレースホルダや取得失敗時の空画像を弾くため。"""
+    try:
+        with Image.open(src) as im:
+            im = im.convert("L")
+            im.thumbnail((64, 64))
+            extrema = im.getextrema()  # (min, max)
+        if not extrema:
+            return False
+        lo, hi = extrema
+        # 明暗差が極端に小さい = ほぼ単色
+        return (hi - lo) < 18
+    except (OSError, UnidentifiedImageError):
+        return True
+
+
+def _url_is_restricted_placeholder(url: str) -> bool:
+    low = url.lower()
+    # Pixiv が未ログイン/制限時に返すプレースホルダ画像
+    return ("limit_unknown" in low or "limit_mypixiv" in low
+            or "limit_sanity_level" in low or "/common/images/limit" in low)
+
+
 def _append_candidate_from_file(project: dict, project_id: int, src: Path, title: str, next_id: int) -> dict:
     try:
         with Image.open(src) as im:
@@ -106,6 +131,7 @@ def _append_candidate_from_file(project: dict, project_id: int, src: Path, title
         "source_file": str(src),
         "thumbnail_url": _make_cached_thumb(src, title, next_id),
         "tags": _pretag_file(src, str(project["project_type"])),
+        "unavailable": _image_is_blank(src),
     }
 
 
@@ -201,6 +227,25 @@ def _fetch_url_bytes(
     raise last_exc
 
 
+def _referer_for(url: str) -> str:
+    """画像CDNのホットリンク対策に合わせた referer を返す。"""
+    try:
+        host = urlparse(url).netloc.lower()
+    except Exception:
+        host = ""
+    if "pinimg.com" in host or "pinterest" in host:
+        return "https://www.pinterest.com/"
+    if "pximg.net" in host or "pixiv" in host:
+        return "https://www.pixiv.net/"
+    try:
+        p = urlparse(url)
+        if p.scheme and p.netloc:
+            return f"{p.scheme}://{p.netloc}/"
+    except Exception:
+        pass
+    return ""
+
+
 def _save_downloaded_image(project_id: int, raw: bytes, title_seed: str, i: int) -> Path:
     kind = _detect_image_format(raw)
     ext = _ext_from_kind(kind)
@@ -233,6 +278,121 @@ def _build_items_from_urls(project: dict, project_id: int, img_urls: list[str], 
     return out
 
 
+def _extract_danbooru_tags(url: str) -> str:
+    from urllib.parse import parse_qs
+    parsed = urlparse(url)
+    qs = parse_qs(parsed.query)
+    tags_list = qs.get("tags", [])
+    if tags_list:
+        return tags_list[0]
+    m = re.search(r"/posts/(\d+)", parsed.path)
+    if m:
+        return f"id:{m.group(1)}"
+    return ""
+
+
+def _scan_from_danbooru(project: dict, project_id: int, url: str, limit: int) -> list[dict]:
+    tags = _extract_danbooru_tags(url)
+    if not tags:
+        return []
+    api_url = (
+        f"https://danbooru.donmai.us/posts.json"
+        f"?tags={quote(tags, safe='')}&limit={min(limit, 200)}"
+        f"&only=id,file_url,large_file_url,tag_string,image_width,image_height"
+    )
+    try:
+        raw, _ = _fetch_url_bytes(api_url)
+        posts = json.loads(raw.decode("utf-8", errors="ignore"))
+    except Exception:
+        return []
+    if not isinstance(posts, list):
+        return []
+
+    out: list[dict] = []
+    for i, post in enumerate(posts, start=1):
+        if len(out) >= limit:
+            break
+        img_url = post.get("large_file_url") or post.get("file_url") or ""
+        if not img_url or not img_url.startswith("http"):
+            continue
+        try:
+            img_raw, img_type = _fetch_url_bytes(img_url, referer="https://danbooru.donmai.us/")
+            kind = _detect_image_format(img_raw)
+            if not kind and "image/" not in img_type:
+                continue
+            stem = f"danbooru_{post.get('id', i)}"
+            local = _save_downloaded_image(project_id, img_raw, stem, i)
+            item = _append_candidate_from_file(project, project_id, local, stem, i)
+            item["source_url"] = img_url
+            tag_str = post.get("tag_string", "")
+            if tag_str:
+                item["tags"] = [t for t in tag_str.split() if t][:30]
+            out.append(item)
+        except Exception:
+            continue
+    return out
+
+
+def _extract_gelbooru_tags(url: str) -> str:
+    from urllib.parse import parse_qs
+    parsed = urlparse(url)
+    qs = parse_qs(parsed.query)
+    tags_list = qs.get("tags", [])
+    if tags_list:
+        return tags_list[0]
+    post_id = qs.get("id", [])
+    if post_id and qs.get("page", [""])[0] == "post":
+        return f"id:{post_id[0]}"
+    return ""
+
+
+def _scan_from_gelbooru(project: dict, project_id: int, url: str, limit: int) -> list[dict]:
+    tags = _extract_gelbooru_tags(url)
+    if not tags:
+        return []
+    api_url = (
+        f"https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1"
+        f"&tags={quote(tags, safe='')}&limit={min(limit, 100)}"
+    )
+    try:
+        raw, _ = _fetch_url_bytes(api_url)
+        data = json.loads(raw.decode("utf-8", errors="ignore"))
+    except Exception:
+        return []
+
+    posts = data.get("post", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+    if not isinstance(posts, list):
+        return []
+
+    out: list[dict] = []
+    for i, post in enumerate(posts, start=1):
+        if len(out) >= limit:
+            break
+        img_url = post.get("file_url", "")
+        if not img_url or not img_url.startswith("http"):
+            continue
+        try:
+            img_raw, img_type = _fetch_url_bytes(img_url, referer="https://gelbooru.com/")
+            kind = _detect_image_format(img_raw)
+            if not kind and "image/" not in img_type:
+                continue
+            stem = f"gelbooru_{post.get('id', i)}"
+            local = _save_downloaded_image(project_id, img_raw, stem, i)
+            item = _append_candidate_from_file(project, project_id, local, stem, i)
+            item["source_url"] = img_url
+            tag_str = post.get("tags", "")
+            if tag_str:
+                item["tags"] = [t for t in tag_str.split() if t][:30]
+            out.append(item)
+        except Exception:
+            continue
+    return out
+
+
+DANBOORU_RE = re.compile(r"danbooru\.donmai\.us", re.IGNORECASE)
+GELBOORU_RE = re.compile(r"gelbooru\.com", re.IGNORECASE)
+
+
 def _scan_from_url_live(project: dict, project_id: int, url: str, limit: int) -> list[dict]:
     target = url.strip()
     if not target:
@@ -240,6 +400,16 @@ def _scan_from_url_live(project: dict, project_id: int, url: str, limit: int) ->
     parsed = urlparse(target)
     if parsed.scheme not in {"http", "https"}:
         return []
+
+    if DANBOORU_RE.search(target):
+        items = _scan_from_danbooru(project, project_id, target, limit)
+        if items:
+            return items
+
+    if GELBOORU_RE.search(target):
+        items = _scan_from_gelbooru(project, project_id, target, limit)
+        if items:
+            return items
 
     pixiv_items = _scan_from_pixiv_artwork(project, project_id, target, limit)
     if pixiv_items:
@@ -387,6 +557,8 @@ def _scan_from_pixiv_artwork(project: dict, project_id: int, artwork_url: str, l
             local = _save_downloaded_image(project_id, img_raw, stem, i)
             item = _append_candidate_from_file(project, project_id, local, stem, i)
             item["source_url"] = img_url
+            if _url_is_restricted_placeholder(img_url):
+                item["unavailable"] = True
             if _is_non_dataset_like_image(item):
                 continue
             out.append(item)
@@ -662,34 +834,10 @@ async def scan(payload: CollectorScanIn) -> dict:
             "message": f"dataset_base({project['project_type']}) から候補を取得",
         }
 
-    # 3) fallback: URL未指定時のみモック候補
-    parsed = urlparse(payload.url)
-    seed = _slugify(Path(parsed.path).stem or parsed.netloc or "image")
-    items = []
-    for i in range(1, min(payload.limit, 24) + 1):
-        title = f"{seed}_{i:02d}"
-        items.append(
-            {
-                "id": i,
-                "title": title,
-                "width": 1024,
-                "height": 1024,
-                "aspect": "square",
-                "source_url": payload.url,
-                "thumbnail_url": _thumbnail_data_uri(title, i),
-                "tags": (["character", "portrait"] if project["project_type"] == "character" else ["style", "background"]),
-            }
-        )
-    items = _filter_items(items, keyword=keyword, project_type=str(project["project_type"]))
-    SCAN_CACHE[payload.project_id] = items
-    return {
-        "project_id": payload.project_id,
-        "url": payload.url,
-        "mode": "mock_url",
-        "detected": len(items),
-        "items": items,
-        "message": "fallback mock scan completed",
-    }
+    # An empty source is an empty result, not a successful synthetic collection.
+    SCAN_CACHE[payload.project_id] = []
+    return {"project_id": payload.project_id, "url": payload.url, "mode": "dataset_base",
+            "detected": 0, "items": [], "message": "取り込み可能な実画像がありません"}
 
 
 @router.post("/import")
@@ -719,53 +867,107 @@ def import_selected(payload: CollectorImportIn) -> dict:
     target_dir.mkdir(parents=True, exist_ok=True)
 
     conn = get_conn()
-    cur = conn.cursor()
-    imported = []
-    for order, item_id in enumerate(payload.selected_ids, start=1):
-        item = by_id.get(item_id)
-        if item is None:
-            continue
-        filename = (
-            payload.naming_template.replace("{title}", _slugify(item["title"])).replace("{index}", f"{order:04d}")
-        )
-        out_path = target_dir / f"{filename}.png"
-
-        src_file = item.get("source_file")
-        if src_file and Path(src_file).exists():
-            shutil.copy2(src_file, out_path)
-            # 補完データセット側にも保管（同名衝突回避）
+    owned_files = []
+    try:
+        cur = conn.cursor()
+        imported = []
+        skipped = []
+        rejected = []
+        for order, item_id in enumerate(payload.selected_ids, start=1):
+            item = by_id.get(item_id)
+            if item is None:
+                continue
+            # 取得失敗(プレースホルダ/白紙)はデータセットに入れない
+            if item.get("unavailable"):
+                continue
+            filename = (
+                payload.naming_template.replace("{title}", _slugify(item["title"])).replace("{index}", f"{order:04d}")
+            )
+            out_path = (target_dir / f"{filename}.png").resolve()
+            if not out_path.is_relative_to(target_dir.resolve()):
+                raise HTTPException(400, "取り込みファイル名に保存先の外側を指定できません")
+            src_file = item.get("source_file")
+            if not src_file or not Path(src_file).is_file():
+                rejected.append({"id": item_id, "reason": "元画像がありません"})
+                continue
+            created = False
+            try:
+                with Image.open(src_file) as image:
+                    image.load()
+                    width, height = image.size
+                    # Exclusive creation prevents both accidental overwrite and duplicate DB rows.
+                    with out_path.open('xb') as destination:
+                        created = True
+                        stat = os.fstat(destination.fileno())
+                        owned_files.append((out_path, stat.st_dev, stat.st_ino))
+                        image.convert('RGBA' if 'A' in image.getbands() else 'RGB').save(destination, format='PNG')
+            except FileExistsError:
+                skipped.append(str(out_path))
+                continue
+            except (OSError, ValueError) as exc:
+                if created:
+                    out_path.unlink(missing_ok=True)
+                rejected.append({"id": item_id, "reason": f"画像を取り込めません: {exc}"})
+                continue
             lib_path = library_dir / out_path.name
-            if not lib_path.exists():
-                shutil.copy2(src_file, lib_path)
-        else:
-            # mock fallback
-            out_path.write_bytes(base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7ZbHkAAAAASUVORK5CYII="))
-
-        cur.execute(
-            """
-            INSERT INTO dataset_items(project_id, file_path, width, height, aspect, selected)
-            VALUES (?, ?, ?, ?, ?, 1)
-            """,
-            (
-                payload.project_id,
-                str(out_path),
-                item.get("width", 0),
-                item.get("height", 0),
-                item.get("aspect", "unknown"),
-            ),
-        )
-        imported.append(str(out_path))
-
-    conn.commit()
-    conn.close()
-    return {
-        "project_id": payload.project_id,
-        "import_dir": str(target_dir),
-        "imported_count": len(imported),
-        "files": imported,
-        "naming_template": payload.naming_template,
-        "message": "dataset import completed",
-    }
+            if lib_path.resolve() != out_path:
+                try:
+                    with lib_path.open('xb') as destination:
+                        stat = os.fstat(destination.fileno())
+                        owned_files.append((lib_path, stat.st_dev, stat.st_ino))
+                        with out_path.open('rb') as source:
+                            shutil.copyfileobj(source, destination)
+                except FileExistsError:
+                    pass
+    
+            cur.execute(
+                """
+                INSERT INTO dataset_items(project_id, file_path, width, height, aspect, selected)
+                VALUES (?, ?, ?, ?, ?, 1)
+                """,
+                (
+                    payload.project_id,
+                    str(out_path),
+                    width,
+                    height,
+                    _aspect(width, height),
+                ),
+            )
+            imported.append(str(out_path))
+    
+        conn.commit()
+        return {
+            "project_id": payload.project_id,
+            "import_dir": str(target_dir),
+            "imported_count": len(imported),
+            "files": imported,
+            "skipped": skipped,
+            "rejected": rejected,
+            "naming_template": payload.naming_template,
+            "message": f"画像{len(imported)}件を取り込み、既存{len(skipped)}件を保持、失敗{len(rejected)}件",
+        }
+    
+    
+    except Exception as exc:
+        conn.rollback()
+        cleanup_errors = []
+        for path, device, inode in reversed(owned_files):
+            try:
+                if path.exists():
+                    stat = path.stat()
+                    if (stat.st_dev, stat.st_ino) == (device, inode):
+                        path.unlink()
+                    else:
+                        cleanup_errors.append(str(path))
+            except OSError:
+                cleanup_errors.append(str(path))
+        if cleanup_errors:
+            raise HTTPException(500, "取り込み失敗。新規ファイルの後片付けが未完了です: " + ", ".join(cleanup_errors)) from exc
+        if isinstance(exc, HTTPException):
+            raise
+        raise HTTPException(500, f"取り込みに失敗したため新規ファイルと登録を戻しました: {exc}") from exc
+    finally:
+        conn.close()
 
 
 async def _drop_files_impl(project_id: int, files: list[UploadFile]) -> dict:
@@ -831,18 +1033,17 @@ def _drop_url_impl(payload: DropUrlIn) -> dict:
                 "message": "pixiv URL image added to candidates",
             }
 
+    source_url = payload.url.strip()
+    # CDN によっては非ブラウザ UA / referer 無しを 403 で弾くため、
+    # ブラウザ UA + ホストに応じた referer で取得する。
     try:
-        req = Request(payload.url.strip(), headers={"User-Agent": "LoRA-Workbench/1.0"})
-        with urlopen(req, timeout=15) as resp:
-            ctype = (resp.headers.get("Content-Type") or "").lower()
-            raw = resp.read()
+        raw, ctype = _fetch_url_bytes(source_url, referer=_referer_for(source_url))
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"failed to fetch URL: {exc}") from exc
 
     if not raw:
         raise HTTPException(status_code=400, detail="empty response body")
 
-    source_url = payload.url.strip()
     if "image/" not in ctype:
         try:
             html = raw.decode("utf-8", errors="ignore")
@@ -851,10 +1052,7 @@ def _drop_url_impl(payload: DropUrlIn) -> dict:
         candidate = _extract_image_url_from_html(source_url, html)
         if candidate:
             try:
-                req2 = Request(candidate, headers={"User-Agent": "LoRA-Workbench/1.0"})
-                with urlopen(req2, timeout=15) as resp2:
-                    raw = resp2.read()
-                    ctype = (resp2.headers.get("Content-Type") or "").lower()
+                raw, ctype = _fetch_url_bytes(candidate, referer=_referer_for(candidate))
                 source_url = candidate
             except Exception:
                 pass
@@ -966,13 +1164,16 @@ def remove_candidates_legacy(payload: CandidateRemoveIn) -> dict:
 
 @router.get("/thumbnail")
 def get_thumbnail(path: str, size: int = 128) -> Response:
-    size = max(64, min(512, size))
+    # Review surfaces need enough pixels to inspect faces and fingers.  Small
+    # grid callers still request small sizes explicitly; the larger ceiling is
+    # only used by full-preview and comparison views.
+    size = max(64, min(2048, size))
     try:
         with Image.open(path) as im:
             im = im.convert("RGB")
             im.thumbnail((size, size))
             buf = _io.BytesIO()
-            im.save(buf, format="JPEG", quality=82)
+            im.save(buf, format="JPEG", quality=92)
         return Response(content=buf.getvalue(), media_type="image/jpeg")
     except (OSError, UnidentifiedImageError):
         raise HTTPException(status_code=404, detail="image not found")
