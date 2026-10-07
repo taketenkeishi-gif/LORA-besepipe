@@ -39,7 +39,9 @@ ap.add_argument("jobs", nargs="+")
 ap.add_argument("--q", type=float, default=0.90, help="merge bar = this quantile of the scores of known different people (same frame)")
 ap.add_argument("--min-images", type=int, default=3)
 ap.add_argument("--no-ccip", action="store_true", help="skip the CCIP score term")
-ap.add_argument("--ccip-per-group", type=int, default=12)
+ap.add_argument("--ccip-per-group", type=int, default=8)
+ap.add_argument("--ccip-mode", choices=["median", "mean"], default="median")
+ap.add_argument("--dump-score", default="", help="write the group score matrices (.npz) for evaluation")
 ap.add_argument("--per-group", type=int, default=40, help="max crops embedded per group (evenly spread)")
 args = ap.parse_args()
 ROOT = Path(args.jobs_root)
@@ -157,6 +159,7 @@ def z(M: np.ndarray) -> np.ndarray:
 
 
 SCORE = z(COS) + z(TAG)
+CC = GF = cc = None
 if not args.no_ccip:
     # CCIP (anime character-identity model): prototype = mean CCIP feature of a few crops; benchmark AUC 0.907 vs 0.856 for CLIP+tags
     try:
@@ -164,14 +167,23 @@ if not args.no_ccip:
         from ccip import Ccip
 
         cc = Ccip(0 if torch.cuda.is_available() else None)
-        feats = np.stack([cc.feat(spread(g["sample"], args.ccip_per_group)).mean(0) for g in groups])
-        CCIPD = cc.dist(feats)
+        if args.ccip_mode == "mean":
+            CCIPD = cc.dist(np.stack([cc.feat(spread(g["sample"], args.ccip_per_group)).mean(0) for g in groups]))
+        else:  # median of crop-to-crop distances: a group mixes views/other people, averaging features blurs identity
+            m = args.ccip_per_group
+            F = np.concatenate([cc.feat([s[i % len(s)] for i in range(m)]) for s in (spread(g["sample"], m) for g in groups)])
+            D = cc.dist(F).reshape(k, m, k, m)
+            CCIPD = np.median(D.transpose(0, 2, 1, 3).reshape(k, k, m * m), axis=2)
+            GF = F.reshape(k, m, -1)  # kept for the split-half check (same recipe)
         CC = -CCIPD
         np.fill_diagonal(CC, CC[iu].mean())
         SCORE = z(COS) + z(TAG) + z(CC)
         print("CCIP term added", flush=True)
     except Exception as exc:  # keep linking usable without the model
         print(f"CCIP unavailable, using CLIP+tags only: {exc}", flush=True)
+if args.dump_score:  # for offline evaluation against labelled groups
+    np.savez(args.dump_score, score=SCORE, cos=COS, tag=TAG, ccip=(CC if CC is not None else np.zeros_like(COS)),
+             ids=np.array([f"{g['job']}/{g['folder']}" for g in groups]))
 neg = SCORE[iu][conflict[iu]]
 bar = float(np.quantile(neg, args.q)) if len(neg) >= 10 else float(np.quantile(SCORE[iu], 0.97))
 print(f"conflict pairs {len(neg)}  merge bar {bar:.2f}", flush=True)
@@ -214,6 +226,7 @@ clusters.sort(key=lambda c: -c["images"])
 # ---------------------------------------------------------------- split-half recall proxy (needs no human)
 rng = np.random.default_rng(0)
 hits = tries = 0
+pos_scores: list[float] = []
 for g in groups:
     if len(g["emb"]) < 8:
         continue
@@ -222,11 +235,20 @@ for g in groups:
     A /= np.linalg.norm(A) + 1e-9; B /= np.linalg.norm(B) + 1e-9
     # same score recipe: cosine z-scored against the cosine distribution of all group pairs; tags are identical for both halves
     zc = (float(A @ B) - COS[iu].mean()) / (COS[iu].std() + 1e-9)
+    s = zc + (1.0 - TAG[iu].mean()) / (TAG[iu].std() + 1e-9)
+    if GF is not None:  # the CCIP term of the score must be in the check too, else the bar (3 terms) is unfair to it
+        h = GF[groups.index(g)]
+        d = float(np.median(cc.dist(h)[: len(h) // 2, len(h) // 2:]))
+        s += (-d - CC[iu].mean()) / (CC[iu].std() + 1e-9)
     tries += 1
-    hits += (zc + (1.0 - TAG[iu].mean()) / (TAG[iu].std() + 1e-9)) >= bar
+    pos_scores.append(s)
+    hits += s >= bar
 metrics = {"groups": k, "jobs": len(args.jobs), "clusters": len(clusters), "multi_group_clusters": sum(c["groups"] > 1 for c in clusters),
            "conflict_pairs_known_different_people": int(len(neg)), "merge_bar": round(bar, 3), "merged_conflicts_must_be_0": merged_conflicts,
            "hair_agreement_inside_merged_clusters": round(float(np.mean(agree)), 3) if agree else None,
            "split_half_relink_rate": round(hits / tries, 3) if tries else None, "split_half_groups_tested": tries}
+if pos_scores and len(neg):  # known same (split halves) vs known different (same frame): how well the score separates them
+    allv = np.concatenate([pos_scores, neg]); r = allv.argsort().argsort()[: len(pos_scores)] + 1
+    metrics["auc_known_same_vs_different"] = round(float((r.sum() - len(pos_scores) * (len(pos_scores) + 1) / 2) / (len(pos_scores) * len(neg))), 4)
 Path(args.out).write_text(json.dumps({"clusters": clusters, "metrics": metrics}, ensure_ascii=False, indent=1), encoding="utf-8")
 print(json.dumps(metrics, ensure_ascii=False), flush=True)
