@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import threading
 import os
 import io
 import json
@@ -1162,19 +1164,37 @@ def remove_candidates_legacy(payload: CandidateRemoveIn) -> dict:
     return remove_candidates(payload)
 
 
+THUMB_CACHE = Path(__file__).resolve().parents[3] / ".runtime" / "thumbs"
+
+
 @router.get("/thumbnail")
 def get_thumbnail(path: str, size: int = 128) -> Response:
     # Review surfaces need enough pixels to inspect faces and fingers.  Small
     # grid callers still request small sizes explicitly; the larger ceiling is
     # only used by full-preview and comparison views.
     size = max(64, min(2048, size))
+    headers = {"Cache-Control": "private, max-age=86400"}
     try:
+        st = os.stat(path)
+        # made once per (file, version, size): decoding full-size originals on every visit took ~5 s per folder tile
+        cached = THUMB_CACHE / f"{hashlib.sha1(f'{os.path.normcase(path)}|{st.st_mtime_ns}|{st.st_size}|{size}'.encode()).hexdigest()}.jpg"
+        if cached.is_file():
+            return Response(content=cached.read_bytes(), media_type="image/jpeg", headers=headers)
         with Image.open(path) as im:
+            im.draft("RGB", (size * 2, size * 2))  # JPEG sources decode at reduced scale
             im = im.convert("RGB")
-            im.thumbnail((size, size))
+            im.thumbnail((size, size), reducing_gap=2.0)
             buf = _io.BytesIO()
             im.save(buf, format="JPEG", quality=92)
-        return Response(content=buf.getvalue(), media_type="image/jpeg")
+        data = buf.getvalue()
+        try:
+            THUMB_CACHE.mkdir(parents=True, exist_ok=True)
+            tmp = cached.with_suffix(f".{threading.get_ident()}.tmp")
+            tmp.write_bytes(data)
+            os.replace(tmp, cached)
+        except OSError:
+            pass
+        return Response(content=data, media_type="image/jpeg", headers=headers)
     except (OSError, UnidentifiedImageError):
         raise HTTPException(status_code=404, detail="image not found")
 

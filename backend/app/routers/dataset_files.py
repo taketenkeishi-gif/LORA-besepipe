@@ -137,12 +137,50 @@ def protected_paths(conn) -> set[str]:
     return paths
 
 
+def _norm(path: str) -> str:
+    return os.path.normcase(os.path.abspath(path))
+
+
+def listing_marks(conn) -> tuple[set[str], set[str]]:
+    """(protected, copy_required) for the listing's BADGES only, compared as normalised strings (no resolve(): resolving
+    ~4000 stored paths made every folder change take ~1 s). Enforcement still uses the strict require_editable_source."""
+    copy_required = {_norm(r['file_path']) for r in conn.execute("SELECT file_path FROM basepipe_assets WHERE origin_kind<>'dataset_file'")}
+    protected = set(copy_required)
+    for row in conn.execute("SELECT a.file_path,e.metadata_json FROM basepipe_snapshot_entries e LEFT JOIN basepipe_assets a ON a.id=e.asset_id"):
+        try:
+            frozen = json.loads(row['metadata_json'] or '{}').get('snapshot', {})
+        except (ValueError, AttributeError):
+            frozen = {}
+        path = (frozen.get('path') if isinstance(frozen, dict) else None) or row['file_path']
+        if path:
+            protected.add(_norm(path))
+    return protected, copy_required
+
+
 def require_editable_source(path: Path, *, allow_snapshot_reference: bool = False) -> None:
     with database_connection() as conn:
         protected = ({str(Path(row['file_path']).resolve()).casefold() for row in conn.execute("SELECT file_path FROM basepipe_assets WHERE origin_kind<>'dataset_file'")}
                      if allow_snapshot_reference else protected_paths(conn))
     if str(path.resolve()).casefold() in protected:
         raise HTTPException(409, "確定した学習対象または生成・レビューが参照している原本です。元ファイルを残して学習用に複製してください")
+
+
+def _pipeline_label(directory: Path, path: Path) -> str | None:
+    """Japanese display name for folders made by the video pipeline (real names unchanged); None = hide."""
+    from ..services import ja_names
+    if directory.name == ".video-datasets" and path.name.startswith("_"):
+        return None  # tool output beside the video jobs (evaluations etc.), not dataset content
+    video = ""
+    if (path / "job.json").is_file():  # a video job folder: show the video's name, not the job id
+        try:
+            meta = json.loads((path / "job.json").read_text(encoding="utf-8"))
+            video = Path(str(meta.get("video") or meta.get("video_path") or "")).stem
+            if meta.get("status") in ("error", "failed", "cancelled") and not (path / "report.json").is_file():
+                return None  # a run that failed part way has nothing usable; the finished run of the same video is shown instead
+        except (OSError, ValueError, AttributeError):
+            pass
+    is_job = (directory / "report.json").is_file() or (directory / "job.json").is_file()
+    return ja_names.folder_label(path.name, is_job, directory.name.startswith("char_"), video)
 
 
 def _folder_preview(folder: Path, n: int = 4, max_dirs: int = 200) -> list[str]:
@@ -171,14 +209,16 @@ def listing(project_id: int, folder: str = "") -> dict:
     items, folders, errors = [], [], []
     with database_connection() as conn:
         registered = {row['file_path']: dict(row) for row in conn.execute("SELECT id,file_path,training_enabled,review_status FROM basepipe_assets WHERE project_id=? AND origin_kind='dataset_file'", (project_id,))}
-        protected = protected_paths(conn)
-        copy_required = {str(Path(row['file_path']).resolve()).casefold() for row in conn.execute("SELECT file_path FROM basepipe_assets WHERE origin_kind<>'dataset_file'")}
+        protected, copy_required = listing_marks(conn)
     for path in sorted(directory.iterdir(), key=lambda p: p.name.casefold()):
         if path.name.startswith('.') or path.is_symlink() or not path.resolve().is_relative_to(root):
             continue
         relative = path.relative_to(root).as_posix()
         if path.is_dir():
-            folders.append({"name": path.name, "relative": relative, "preview": _folder_preview(path)})
+            label = _pipeline_label(directory, path)
+            if label is None:  # diagnostic folders of the video pipeline are not shown
+                continue
+            folders.append({"name": path.name, "label": label, "relative": relative, "preview": _folder_preview(path)})
         elif path.suffix.lower() in EXTENSIONS:
             try:
                 image_path(root, relative)
@@ -186,9 +226,14 @@ def listing(project_id: int, folder: str = "") -> dict:
                 with Image.open(path) as im:
                     width, height = im.size
                 stat = path.stat()
-                items.append({"name": path.name, "relative": relative, "path": str(path), "caption_path": str(path.with_suffix('.txt')), "caption": caption, "revision": revision, "width": width, "height": height, "bytes": stat.st_size, "modified": stat.st_mtime_ns, "asset": registered.get(str(path)), "protected_source": str(path.resolve()).casefold() in protected, "requires_training_copy": str(path.resolve()).casefold() in copy_required})
+                items.append({"name": path.name, "relative": relative, "path": str(path), "caption_path": str(path.with_suffix('.txt')), "caption": caption, "revision": revision, "width": width, "height": height, "bytes": stat.st_size, "modified": stat.st_mtime_ns, "asset": registered.get(str(path)), "protected_source": _norm(str(path)) in protected, "requires_training_copy": _norm(str(path)) in copy_required})
             except (OSError, ValueError, HTTPException) as exc:
                 errors.append(f"{path.name}: {getattr(exc, 'detail', str(exc))}")
+    seen: dict[str, int] = {}
+    for f in folders:  # two characters with the same colours get (2), (3)...
+        seen[f["label"]] = seen.get(f["label"], 0) + 1
+        if seen[f["label"]] > 1:
+            f["label"] = f"{f['label']}（{seen[f['label']]}）"
     order, revision = folder_order(root, directory, [i['relative'] for i in items])
     by_name = {i['relative']: i for i in items}
     return {"root": str(root), "folder": '' if directory == root else directory.relative_to(root).as_posix(), "directory": str(directory), "folders": folders, "items": [by_name[n] for n in order], "errors": errors, 'order_revision': revision}
@@ -643,17 +688,27 @@ def walk_tree(root: Path, folder: str = '') -> tuple[list[str], list[str]]:
     base = within(root, folder)
     if not base.is_dir():
         raise HTTPException(404, "フォルダが見つかりません")
+    # os.scandir: symlink/dir flags come with the directory listing (no per-file stat or resolve - those made a
+    # 14k-image tree take 9 s). Symlinked folders are never entered, so every file found is inside root.
     dirs, images = [], []
-    for dirpath, dirnames, filenames in os.walk(base):
-        here = Path(dirpath)
-        dirnames[:] = sorted((d for d in dirnames if not d.startswith('.') and not (here / d).is_symlink()), key=str.casefold)
-        for d in dirnames:
-            dirs.append((here / d).relative_to(root).as_posix())
-        for name in sorted(filenames, key=str.casefold):
-            path = here / name
-            if name.startswith('.') or path.suffix.lower() not in EXTENSIONS or path.is_symlink() or not path.resolve().is_relative_to(root):
+    root_prefix = len(str(root)) + 1
+    stack = [str(base)]
+    while stack:
+        here = stack.pop()
+        try:
+            entries = sorted(os.scandir(here), key=lambda e: e.name.casefold())
+        except OSError:
+            continue
+        subdirs = []
+        for e in entries:
+            if e.name.startswith('.') or e.is_symlink():
                 continue
-            images.append(path.relative_to(root).as_posix())
+            if e.is_dir(follow_symlinks=False):
+                subdirs.append(e.path)
+                dirs.append(e.path[root_prefix:].replace(os.sep, '/'))
+            elif os.path.splitext(e.name)[1].lower() in EXTENSIONS:
+                images.append(e.path[root_prefix:].replace(os.sep, '/'))
+        stack.extend(reversed(subdirs))
     return dirs, images
 
 
@@ -680,6 +735,7 @@ def summary(project_id: int):
     root = root_for(project_id)
     dirs, images = walk_tree(root)
     targets, snapshot_id = current_snapshot_paths(project_id)
+    targets_norm = {os.path.normcase(t) for t in targets}  # cheap string match first; resolve() only if a snapshot exists
     reference = read_reference(project_id)
     ref_size = None
     if reference:
@@ -691,7 +747,7 @@ def summary(project_id: int):
         path = root / relative
         if reference and (relative == reference.get('source_relative') or (ref_size is not None and path.stat().st_size == ref_size and digest(path) == reference.get('sha256'))):
             continue
-        hit = 1 if str(path.resolve()).casefold() in targets else 0
+        hit = 1 if os.path.normcase(str(path)) in targets_norm else 0
         parts = relative.split('/')[:-1]
         owners = [top] + [folders["/".join(parts[:i + 1])] for i in range(len(parts))]
         for entry in owners:

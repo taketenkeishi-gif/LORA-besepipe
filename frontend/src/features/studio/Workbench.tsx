@@ -49,6 +49,9 @@ export default function Workbench(){
   async function reloadScreen(){setReloading(true);try{const pending:Promise<unknown>[]=[];window.dispatchEvent(new CustomEvent('workbench-before-reload',{detail:{waitUntil:(p:Promise<unknown>)=>pending.push(p)}}));await Promise.race([Promise.all(pending),new Promise((_,reject)=>setTimeout(()=>reject(new Error('設定の保存を確認できませんでした。再読み込みは行っていません')),10000))]);window.location.reload();}catch(e){setError(String(e));setReloading(false);}}
   const [projects,setProjects]=useState<Project[]>([]),[selected,setSelected]=useState<number|null>(null);
   const [openTabs,setOpenTabs]=useState<number[]>([]);
+  // a tab loads its data the first time it is shown, then stays mounted: opening every tab at start-up queued ~6 s of requests in front of the visible one
+  const [visited,setVisited]=useState<number[]>([]);
+  useEffect(()=>{if(selected!==null&&!visited.includes(selected))setVisited(v=>[...v,selected]);},[selected]);
   const [openingFolder,setOpeningFolder]=useState(false);
   const [rootRequests,setRootRequests]=useState<Record<number,number>>({});
   const [loading,setLoading]=useState(true),[error,setError]=useState('');
@@ -82,7 +85,7 @@ export default function Workbench(){
     </header>
     {error&&<Callout.Root color="red"><Callout.Text>{error}</Callout.Text><Button size="1" onClick={()=>void load()}>再接続</Button></Callout.Root>}
     {chars&&<main className="wb-canvas"><CharacterSets/></main>}
-    <main className="wb-canvas" hidden={chars}>{loading?<Flex justify="center" align="center" height="300px"><Spinner size="3"/></Flex>:opened.length?opened.map(p=><Tabs.Content key={p.id} value={String(p.id)} forceMount className="wb-project-panel"><ProjectCanvas project={p} active={selected===p.id} openRootRequest={rootRequests[p.id]||0}/></Tabs.Content>):<Flex direction="column" align="center" justify="center" gap="4" height="400px"><Text color="gray">プロジェクトをタブで開いて作業を開始</Text><Button onClick={()=>setOpenMenu(true)}><FolderOpen size={16}/>プロジェクトを開く</Button><Button variant="soft" onClick={()=>setCreate(true)}><Plus size={16}/>新しいプロジェクト</Button></Flex>}</main>
+    <main className="wb-canvas" hidden={chars}>{loading?<Flex justify="center" align="center" height="300px"><Spinner size="3"/></Flex>:opened.length?opened.map(p=><Tabs.Content key={p.id} value={String(p.id)} forceMount className="wb-project-panel">{(visited.includes(p.id)||selected===p.id)&&<ProjectCanvas project={p} active={selected===p.id} openRootRequest={rootRequests[p.id]||0}/>}</Tabs.Content>):<Flex direction="column" align="center" justify="center" gap="4" height="400px"><Text color="gray">プロジェクトをタブで開いて作業を開始</Text><Button onClick={()=>setOpenMenu(true)}><FolderOpen size={16}/>プロジェクトを開く</Button><Button variant="soft" onClick={()=>setCreate(true)}><Plus size={16}/>新しいプロジェクト</Button></Flex>}</main>
     <Dialog.Root open={create} onOpenChange={setCreate}><Dialog.Content maxWidth="400px"><Dialog.Title>新しいプロジェクト</Dialog.Title><Dialog.Description size="2" mb="4">キャラクターや学習内容が分かる名前</Dialog.Description><form onSubmit={e=>{e.preventDefault();void createProject();}}><TextField.Root autoFocus aria-label="プロジェクト名" value={name} onChange={e=>setName(e.target.value)} placeholder="名前"/><Flex justify="end" gap="3" mt="5"><Dialog.Close><Button type="button" variant="soft" color="gray">キャンセル</Button></Dialog.Close><Button type="submit" disabled={!name.trim()||creating}>作成</Button></Flex></form></Dialog.Content></Dialog.Root>
   </Tabs.Root>;
 }

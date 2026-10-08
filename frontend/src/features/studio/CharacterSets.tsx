@@ -32,8 +32,9 @@ export default function CharacterSets(){
   apiPost<{set_id:string}>('/character-sets/open',{folder},'POST',undefined,60000).then(r=>loadSet(r.set_id)).catch(e=>setError(String(e)));},[folder,loadSet]);
  useEffect(()=>{if(set?.status!=='computing')return;const t=setInterval(()=>void loadSet(set.set_id),5000);return()=>clearInterval(t);},[set?.status,set?.set_id,loadSet]);
  useEffect(()=>{if(set?.status==='ready'&&!current&&set.characters?.[0])setCurrent(String(set.characters[0].id));},[set,current]);
- const loadImages=useCallback(async()=>{if(!sid||!current)return;const r=await apiGet<{images:string[]}>(`${base}/images?character=${current}`,30000);setImages(r.images);setSel(new Set());setAnchor(-1);},[sid,current,base]);
- useEffect(()=>{void loadImages().catch(e=>setError(String(e)));},[loadImages]);
+ const want=useRef('');// the character whose images the grid should show; an older reply never overwrites a newer choice
+ const loadImages=useCallback(async()=>{if(!sid||!current)return;const key=`${sid}|${current}`;want.current=key;const r=await apiGet<{images:string[]}>(`${base}/images?character=${current}`,30000);if(want.current!==key)return;setImages(r.images);setSel(new Set());setAnchor(-1);},[sid,current,base]);
+ useEffect(()=>{setImages([]);void loadImages().catch(e=>setError(String(e)));},[loadImages]);// switching character clears the old grid at once
 
  async function act(path:string,body:unknown){if(!sid)return;setBusy(true);setError('');
   try{await apiPost(`${base}${path}`,body,'POST',undefined,60000);const s=await loadSet(sid);
@@ -84,7 +85,7 @@ export default function CharacterSets(){
     {chars.map(c=><div key={c.id} className={`cs-char${String(c.id)===current?' on':''}${over===String(c.id)?' over':''}`} draggable
       onDragStart={e=>{e.dataTransfer.setData(CHAR,String(c.id));e.dataTransfer.effectAllowed='move';}}
       onClick={()=>setCurrent(String(c.id))} {...target(String(c.id))}>
-     {c.cover[0]&&<img src={thumb(c.cover[0])} alt="" draggable={false}/>}
+     {c.cover[0]&&<img src={thumb(c.cover[0])} alt="" loading="lazy" draggable={false}/>}
      {renaming===c.id?<input autoFocus defaultValue={c.name} onBlur={e=>{setRenaming(null);if(e.target.value.trim()&&e.target.value!==c.name)void act('/rename',{id:c.id,name:e.target.value});}}
        onKeyDown={e=>{if(e.key==='Enter')(e.target as HTMLInputElement).blur();if(e.key==='Escape')setRenaming(null);}}/>
       :<span className="cs-name" onDoubleClick={e=>{e.stopPropagation();setRenaming(c.id);}}>{c.name}</span>}

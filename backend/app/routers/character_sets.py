@@ -69,11 +69,18 @@ def _slug(folder: Path) -> str:
 def _set_dir(set_id: str) -> tuple[Path, Path]:
     if not re.fullmatch(r"[^\\/:*?\"<>|]+-[0-9a-f]{6}", set_id):
         raise HTTPException(400, "不正なセットです")
+    hit = _set_dirs.get(set_id)  # every thumbnail asks for this: scanning all projects each time cost ~0.2 s
+    if hit and (hit[1] / "set.json").is_file():
+        return hit
     for root in _roots():
         d = root / SETS / set_id
         if (d / "set.json").is_file():
+            _set_dirs[set_id] = (root, d)
             return root, d
     raise HTTPException(404, "セットが見つかりません")
+
+
+_set_dirs: dict[str, tuple[Path, Path]] = {}
 
 
 def _load(d: Path) -> dict:
@@ -91,12 +98,73 @@ def _save(d: Path, state: dict, history: bool = True) -> None:
     svc.write_json(d / "characters.json", state)
 
 
-def _from_clusters(clusters: list[dict], prefix: str) -> dict:
-    chars = []
-    for i, c in enumerate(sorted(clusters, key=lambda c: -c["images"]), 1):
-        name = " ".join(x for x in (c.get("hair", ""), c.get("eyes", "")) if x) or f"キャラ{i}"
-        chars.append({"id": i, "name": name, "images": [prefix + f for f in c["files"]]})
-    return {"version": 1, "characters": chars, "excluded": [], "next_id": len(chars) + 1}
+NAMING = 2
+HAIR_AGREE = 0.6   # a hair colour names the group only when this share of its images carries that colour tag
+FACE_SHARE = 0.35  # ...and this share shows a face (crop view close/upper/full); below it the group is parts, props, mascots
+_tags: dict[str, list[str]] = {}
+
+
+def _crop_tags(root: Path, rel: str) -> list[str]:
+    if rel not in _tags:
+        try:
+            _tags[rel] = [t.strip() for t in (root / rel).with_suffix(".txt").read_text(encoding="utf-8").split(",")]
+        except OSError:
+            _tags[rel] = []
+    return _tags[rel]
+
+
+def _shows_face(rel: str) -> bool:
+    view = Path(rel).stem.rsplit("_", 2)[-2] if Path(rel).stem.count("_") >= 2 else ""
+    return view.split("-")[-1] in ("close", "upper", "full")
+
+
+def _describe(root: Path, images: list[str]) -> tuple[int, str]:
+    """(rank, label): rank 0 = a character named by hair/eye colour, 1 = faces but mixed hair, 2 = mostly no face."""
+    from ..services import ja_names
+    if not images:
+        return 2, "空"
+    if sum(map(_shows_face, images)) / len(images) < FACE_SHARE:
+        return 2, "顔なし"
+
+    def dominant(kind: str) -> tuple[str, float]:
+        counts: dict[str, int] = {}
+        for rel in images:
+            for t in {t for t in _crop_tags(root, rel) if t.endswith(f" {kind}") and t[: -len(kind) - 1] in ja_names.COLOURS}:
+                counts[t] = counts.get(t, 0) + 1
+        if not counts:
+            return "", 0.0
+        tag = max(counts, key=counts.get)
+        return tag, counts[tag] / len(images)
+
+    hair, agree = dominant("hair")
+    if agree < HAIR_AGREE:
+        return 1, "髪色混在"
+    eyes, eye_agree = dominant("eyes")
+    return 0, ja_names.character(hair=hair, eyes=eyes if eye_agree >= 0.5 else "")
+
+
+def _relabel(root: Path, s: dict) -> dict:
+    """Name automatically named groups from their current images and list real characters first (largest first)."""
+    ranked = []
+    for c in s["characters"]:
+        rank, label = _describe(root, c["images"]) if c.get("auto_name", True) else (0, c["name"])
+        ranked.append((rank, -len(c["images"]), c, label))
+    ranked.sort(key=lambda r: (r[0], r[1]))
+    used: dict[str, int] = {}
+    for _rank, _n, c, label in ranked:
+        if c.get("auto_name", True):
+            used[label] = used.get(label, 0) + 1
+            c["name"] = label if used[label] == 1 else f"{label}（{used[label]}）"
+            c["auto_name"] = True
+    s["characters"] = [r[2] for r in ranked]
+    s["naming"] = NAMING
+    return s
+
+
+def _from_clusters(root: Path, clusters: list[dict], prefix: str) -> dict:
+    chars = [{"id": i, "name": "", "auto_name": True, "images": [prefix + f for f in c["files"]]}
+             for i, c in enumerate(sorted(clusters, key=lambda c: -c["images"]), 1)]
+    return _relabel(root, {"version": 1, "characters": chars, "excluded": [], "next_id": len(chars) + 1})
 
 
 @router.get("/sources")
@@ -133,7 +201,7 @@ def _compute(root: Path, d: Path, sid: str, jobs: list[str]) -> None:
         if r.returncode:
             raise RuntimeError((r.stderr or r.stdout)[-400:])
         links = json.loads((cache / "links.json").read_text(encoding="utf-8"))
-        _save(d, _from_clusters(links["clusters"], svc.JOBS_DIRNAME + "/"), history=False)
+        _save(d, _from_clusters(root, links["clusters"], svc.JOBS_DIRNAME + "/"), history=False)
         _computing.pop(sid, None)
     except Exception as exc:  # noqa: BLE001
         _computing[sid] = {"error": str(exc)[-300:]}
@@ -152,6 +220,7 @@ def open_set(payload: OpenIn):
             d.mkdir(parents=True, exist_ok=True)
             svc.write_json(d / "set.json", {"folder": str(folder), "jobs": jobs, "created": time.time()})
             if (d / "characters.json").is_file():
+                _start_warm(root, d, sid)
                 return {"set_id": sid, "status": "ready"}
             # an existing image-level clustering of exactly these videos is reused (it takes minutes to compute)
             prev = root / svc.JOBS_DIRNAME / "_links_crop.json"
@@ -159,7 +228,8 @@ def open_set(payload: OpenIn):
                 links = json.loads(prev.read_text(encoding="utf-8"))
                 used = {f.split("/")[0] for c in links["clusters"] for f in c["files"]}
                 if used == set(jobs):
-                    _save(d, _from_clusters(links["clusters"], svc.JOBS_DIRNAME + "/"), history=False)
+                    _save(d, _from_clusters(root, links["clusters"], svc.JOBS_DIRNAME + "/"), history=False)
+                    _start_warm(root, d, sid)
                     return {"set_id": sid, "status": "ready"}
             if sid not in _computing:
                 _computing[sid] = {"started": time.time()}
@@ -178,6 +248,11 @@ def get_set(set_id: str):
     if not (d / "characters.json").is_file():
         return {"set_id": set_id, "status": "computing"}
     s = _load(d)
+    if s.get("naming") != NAMING:  # sets named by an older rule are renamed once (hand-given names are kept)
+        with _lock:
+            s = _relabel(root, _load(d))
+            _save(d, s, history=False)
+    _start_warm(root, d, set_id)
     return {"set_id": set_id, "status": "ready", "folder": meta["folder"], "set_folder": str(d), "videos": len(meta["jobs"]),
             "characters": [{"id": c["id"], "name": c["name"], "count": len(c["images"]), "cover": c["images"][:1]} for c in s["characters"] if c["images"]],
             "excluded": len(s["excluded"]), "can_undo": any((d / "history").glob("*.json")) if (d / "history").is_dir() else False}
@@ -202,7 +277,7 @@ class MoveIn(BaseModel):
 
 @router.post("/{set_id}/move")
 def move(set_id: str, payload: MoveIn):
-    _root, d = _set_dir(set_id)
+    root, d = _set_dir(set_id)
     with _lock:
         s = _load(d)
         moving = set(payload.images)
@@ -222,7 +297,7 @@ def move(set_id: str, payload: MoveIn):
                 raise HTTPException(404, "移動先のキャラが見つかりません")
             c["images"] += payload.images
             target = c["id"]
-        _save(d, s)
+        _save(d, _relabel(root, s))
     return {"moved": len(payload.images), "to": target}
 
 
@@ -233,7 +308,7 @@ class MergeIn(BaseModel):
 
 @router.post("/{set_id}/merge")
 def merge(set_id: str, payload: MergeIn):
-    _root, d = _set_dir(set_id)
+    root, d = _set_dir(set_id)
     with _lock:
         s = _load(d)
         src = next((c for c in s["characters"] if c["id"] == payload.source), None)
@@ -242,7 +317,7 @@ def merge(set_id: str, payload: MergeIn):
             raise HTTPException(400, "結合するキャラが不正です")
         dst["images"] += src["images"]
         s["characters"] = [c for c in s["characters"] if c is not src]
-        _save(d, s)
+        _save(d, _relabel(root, s))
     return {"merged": len(src["images"]), "into": dst["id"]}
 
 
@@ -260,6 +335,7 @@ def rename(set_id: str, payload: RenameIn):
         if c is None or not payload.name.strip():
             raise HTTPException(400, "名前を変更できません")
         c["name"] = payload.name.strip()[:80]
+        c["auto_name"] = False
         _save(d, s)
     return {"ok": True}
 
@@ -298,6 +374,54 @@ def _image_path(root: Path, rel: str) -> Path:
     return p
 
 
+def _thumb_file(d: Path, rel: str, size: int) -> Path:
+    return d / "cache" / "thumbs" / f"{hashlib.sha1(f'{rel}|{size}'.encode()).hexdigest()}.jpg"
+
+
+def _make_thumb(src: Path, dest: Path, size: int) -> None:
+    from PIL import Image
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    im = Image.open(src).convert("RGB")
+    im.thumbnail((size, size), Image.LANCZOS, reducing_gap=2.0)
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=82)
+    tmp = dest.with_suffix(f".{threading.get_ident()}.tmp")
+    tmp.write_bytes(buf.getvalue())
+    os.replace(tmp, dest)
+
+
+_warming: set[str] = set()
+
+
+def _start_warm(root: Path, d: Path, sid: str) -> None:
+    if sid not in _warming:
+        _warming.add(sid)
+        threading.Thread(target=_warm_thumbs, args=(root, d), daemon=True, name=f"thumbs-{sid}").start()
+
+
+def _warm_thumbs(root: Path, d: Path, size: int = 192) -> None:
+    """Make every thumbnail of the set in the background (largest characters first), so browsing never waits on PIL.
+    Runs once per set (results stay in cache/thumbs) on one thread at the lowest OS priority, so it never competes with the desktop."""
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetThreadPriority(ctypes.windll.kernel32.GetCurrentThread(), -15)  # THREAD_PRIORITY_IDLE
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        s = _load(d)
+        for c in sorted(s["characters"], key=lambda c: -len(c["images"])):
+            for rel in c["images"]:
+                t = _thumb_file(d, rel, size)
+                if not t.is_file():
+                    try:
+                        _make_thumb((root / rel), t, size)
+                    except OSError:
+                        pass
+    except Exception:  # noqa: BLE001 - warming is best effort
+        pass
+
+
 @router.get("/{set_id}/file")
 def file(set_id: str, rel: str = Query(..., min_length=1, max_length=1024)):
     root, _d = _set_dir(set_id)
@@ -308,19 +432,8 @@ def file(set_id: str, rel: str = Query(..., min_length=1, max_length=1024)):
 def thumb(set_id: str, rel: str = Query(..., min_length=1, max_length=1024), s: int = 192):
     """Small JPEG for the grid (cached under the set), so hundreds of 1024 px PNGs do not have to be decoded by the browser."""
     root, d = _set_dir(set_id)
-    p = _image_path(root, rel)
     size = max(64, min(512, s))
-    key = hashlib.sha1(f"{rel}|{size}|{p.stat().st_mtime_ns}".encode()).hexdigest()
-    c = d / "cache" / "thumbs" / f"{key}.jpg"
-    if not c.is_file():
-        from PIL import Image
-
-        c.parent.mkdir(parents=True, exist_ok=True)
-        im = Image.open(p).convert("RGB")
-        im.thumbnail((size, size), Image.LANCZOS)
-        buf = io.BytesIO()
-        im.save(buf, "JPEG", quality=82)
-        tmp = c.with_suffix(".tmp")
-        tmp.write_bytes(buf.getvalue())
-        os.replace(tmp, c)
+    c = _thumb_file(d, rel, size)
+    if not c.is_file():  # crops never change after the pipeline wrote them, so a made thumbnail is served as is
+        _make_thumb(_image_path(root, rel), c, size)
     return FileResponse(c, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
