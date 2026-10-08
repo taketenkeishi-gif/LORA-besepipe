@@ -145,6 +145,23 @@ def require_editable_source(path: Path, *, allow_snapshot_reference: bool = Fals
         raise HTTPException(409, "確定した学習対象または生成・レビューが参照している原本です。元ファイルを残して学習用に複製してください")
 
 
+def _folder_preview(folder: Path, n: int = 4, max_dirs: int = 200) -> list[str]:
+    """Up to n images inside a folder (subfolders too, shallow first) so the folder can be shown with thumbnails like Explorer."""
+    found: list[str] = []
+    seen = 0
+    for current, dirs, files in os.walk(folder):
+        dirs[:] = sorted(d for d in dirs if not d.startswith('.'))
+        for name in sorted(files):
+            if Path(name).suffix.lower() in EXTENSIONS:
+                found.append(str(Path(current) / name))
+                if len(found) >= n:
+                    return found
+        seen += 1
+        if seen >= max_dirs:
+            break
+    return found
+
+
 @router.get("/{project_id}")
 def listing(project_id: int, folder: str = "") -> dict:
     root = root_for(project_id)
@@ -161,7 +178,7 @@ def listing(project_id: int, folder: str = "") -> dict:
             continue
         relative = path.relative_to(root).as_posix()
         if path.is_dir():
-            folders.append({"name": path.name, "relative": relative})
+            folders.append({"name": path.name, "relative": relative, "preview": _folder_preview(path)})
         elif path.suffix.lower() in EXTENSIONS:
             try:
                 image_path(root, relative)
