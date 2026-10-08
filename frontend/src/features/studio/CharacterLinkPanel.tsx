@@ -1,5 +1,6 @@
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import {createPortal} from 'react-dom';
+import CropLinkReview from './CropLinkReview';
 const zoomBtn:React.CSSProperties={font:'inherit',fontSize:13,background:'#2a3036',color:'#eef0f2',border:'1px solid #444c55',borderRadius:6,padding:'5px 12px',cursor:'pointer'};
 import {Badge,Button,Callout,Checkbox,Flex,Spinner,Text,TextField} from '@radix-ui/themes';
 import {API_BASE,apiGet,apiPost} from '../../lib/api';
@@ -119,7 +120,7 @@ export default function CharacterLinkPanel({projectId,onCreated}:{projectId:numb
  function openZoom(e:React.MouseEvent){
   const t=e.target as HTMLElement;
   if(t.tagName!=='IMG'||t.closest('[data-zoom]'))return;
-  const box=t.parentElement?.closest('div')||t.parentElement;
+  const box=t.closest('[data-zoomset]')||t.parentElement?.closest('div')||t.parentElement;
   const list=[...(box?.querySelectorAll('img')??[])].map(i=>(i as HTMLImageElement).src);
   setZoom({list,i:Math.max(0,list.indexOf((t as HTMLImageElement).src))});
  }
@@ -146,6 +147,8 @@ export default function CharacterLinkPanel({projectId,onCreated}:{projectId:numb
     <Button disabled={!chosen.length||!name.trim()||busy} onClick={()=>void create()}>{busy?<Spinner/>:null}1つのキャラとして新規プロジェクトを作る</Button>
     <Button size="1" variant="ghost" color="gray" disabled={!picked.size} onClick={()=>setPicked(new Set())}>選択を解除</Button></Flex></div>
 
+  <CropLinkReview projectId={projectId}/>
+  <details style={{marginTop:16}}><summary style={{cursor:'pointer'}}><Text size="2" weight="medium">旧方式（動画ごとのグループを髪・瞳タグと見た目で結合）の提案と一覧</Text></summary>
   {proposals.length>0&&<><Text as="div" size="3" weight="bold" mt="3">LoRAの提案（登場の多いキャラ順）</Text>
    <Text as="p" size="1" color="gray">登場の多いキャラごとに、作るLoRAのデータセット案です。同じ衣装は動画をまたいで1つのインスタンスにまとめます。そのまま作るか、「下で足し引きする」で調整してください。</Text>
    <div style={{display:'grid',gap:8,marginTop:6}}>{proposals.map(p=><ProposalCard key={p.cluster} pid={projectId} p={p} rank={p.rank} busy={busy}
@@ -156,6 +159,7 @@ export default function CharacterLinkPanel({projectId,onCreated}:{projectId:numb
   {suggestOnly.length>0&&<><Text as="div" size="3" weight="bold" mt="3">要確認の候補（基準を緩めて増えた分）</Text>
    <Text as="p" size="1" color="gray">似た色の別キャラが混ざることがあります。画像を見て、選ぶものだけにチェックを入れてください。</Text>
    <div style={{display:'grid',gap:8,marginTop:6}}>{suggestOnly.map(c=>card(c,'要確認','amber'))}</div></>}
+  </details>
 
   {loading&&<Flex gap="2" align="center" mt="3"><Spinner/><Text size="2" color="gray">結合の結果を読み込んでいます…</Text></Flex>}
   {!loading&&res&&!res.auto&&!res.state.running&&<Callout.Root size="1" mt="3"><Callout.Text>まだ結合を計算していません。「結合候補を自動で計算する」を押すと、取り込んだすべての動画をまとめて比べます。</Callout.Text></Callout.Root>}

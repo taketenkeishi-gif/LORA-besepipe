@@ -217,6 +217,45 @@ def _proposals(root: Path, clusters: list[dict], suggest: list[dict] | None = No
     return out
 
 
+def _spread(xs: list, n: int) -> list:
+    return xs if len(xs) <= n else [xs[round(i * (len(xs) - 1) / (n - 1))] for i in range(n)]
+
+
+@router.get("/crop-result")
+def crop_result(project_id: int, top: int = 12, min_images: int = 40, per_video: int = 16):
+    """Image-level (CCIP-only) character clusters from tools/video_dataset/crop_link.py, shaped for review in the panel:
+    per proposal the images by video, the images whose hair tag disagrees with the majority, and the nearest other clusters."""
+    root = _jobs_root(project_id)
+    p = root / "_links_crop.json"
+    if not p.is_file():
+        return {"available": False}
+    data = json.loads(p.read_text(encoding="utf-8"))
+    video_of: dict[str, str] = {}
+    for d in root.iterdir():
+        meta = svc.load_json(d / "job.json") if (d / "job.json").is_file() else None
+        if isinstance(meta, dict):
+            video_of[d.name] = Path(str(meta.get("video") or meta.get("video_path") or d.name)).stem
+    clusters = data["clusters"]
+    props = [c for c in clusters if c["images"] >= min_images][:top]
+    by_id = {c["id"]: c for c in clusters}
+    rank = {c["id"]: i + 1 for i, c in enumerate(props)}
+    out = []
+    for c in props:
+        groups: dict[str, list[str]] = {}
+        for f in c["files"]:
+            groups.setdefault(f.split("/")[0], []).append(f)
+        out.append({"id": c["id"], "rank": rank[c["id"]], "images": c["images"], "videos": c["videos"], "hair": c["hair"], "eyes": c["eyes"],
+                    "hair_agreement": c.get("hair_agreement"), "from_unassigned": c.get("from_unassigned", 0), "outfits": c.get("outfits", [])[:8],
+                    "by_video": [{"job": j, "video": video_of.get(j, j), "count": len(fs), "sample": _spread(fs, per_video)}
+                                 for j, fs in sorted(groups.items(), key=lambda kv: -len(kv[1]))],
+                    "hair_disagrees": c.get("hair_disagrees", [])[:60],
+                    "nearest": [{"id": n["id"], "dist": n["dist"], "rank": rank.get(n["id"]), "images": by_id[n["id"]]["images"],
+                                 "videos": by_id[n["id"]]["videos"], "hair": by_id[n["id"]]["hair"], "eyes": by_id[n["id"]]["eyes"],
+                                 "sample": _spread(by_id[n["id"]]["files"], 8)} for n in c.get("nearest", []) if n["id"] in by_id]})
+    return {"available": True, "t": data.get("t"), "crops": data.get("crops"), "videos": data.get("videos"), "clusters": len(clusters),
+            "clusters_20_plus": sum(1 for c in clusters if c["images"] >= 20), "proposals": out}
+
+
 class Feedback(BaseModel):
     cluster: int
     kept: list[str] = []
