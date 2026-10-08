@@ -46,6 +46,7 @@ function ProjectCanvas({project,active,openRootRequest}:{project:Project;active:
 export default function Workbench(){
   const [reloading,setReloading]=useState(false);
   const [chars,setChars]=useState(false);
+  useEffect(()=>{const open=()=>setChars(true);window.addEventListener('open-character-sets',open);return()=>window.removeEventListener('open-character-sets',open);},[]);
   async function reloadScreen(){setReloading(true);try{const pending:Promise<unknown>[]=[];window.dispatchEvent(new CustomEvent('workbench-before-reload',{detail:{waitUntil:(p:Promise<unknown>)=>pending.push(p)}}));await Promise.race([Promise.all(pending),new Promise((_,reject)=>setTimeout(()=>reject(new Error('設定の保存を確認できませんでした。再読み込みは行っていません')),10000))]);window.location.reload();}catch(e){setError(String(e));setReloading(false);}}
   const [projects,setProjects]=useState<Project[]>([]),[selected,setSelected]=useState<number|null>(null);
   const [openTabs,setOpenTabs]=useState<number[]>([]);

@@ -6,7 +6,7 @@ import AutoTagDialog from './AutoTagDialog';
 import {desktop,desktopError} from './desktopBridge';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import VideoImportDialog from './VideoImportDialog';
-import { Film, FolderOpen, Folder, FolderPlus, Upload, RefreshCw, Save, Search, ArrowUp, Grid2X2, List, Check, ImagePlus, FileText, SlidersHorizontal, ClipboardPaste } from 'lucide-react';
+import { Film, FolderOpen, Folder, FolderPlus, Users, Upload, RefreshCw, Save, Search, ArrowUp, Grid2X2, List, Check, ImagePlus, FileText, SlidersHorizontal, ClipboardPaste } from 'lucide-react';
 import { API_BASE, apiPost, apiGet } from '../../lib/api';
 import type { PreparedDataset } from './workbenchTypes';
 import type { Project } from '../../types';
@@ -75,6 +75,8 @@ export default function DatasetFiles({project,active=true,openRootRequest=0,onRe
     const seq=++summaryRequest.current;
     try{const next=await apiGet<Summary>(`/dataset-files/${project.id}/summary`);if(seq===summaryRequest.current)setSummary(next);}catch{/* 件数は補助表示。失敗しても編集は続けられる */}
   }
+  // video-pipeline job folders (16-hex ids shown under the video's name): their characters are browsed across videos in the editor
+  const videoJobs=useMemo(()=>(data?.folders||[]).filter(f=>/^[0-9a-f]{16}$/.test(f.name)),[data]);
   const statByFolder=useMemo(()=>new Map((summary?.folders||[]).map(f=>[f.relative,f])),[summary]);
   const statText=(s?:FolderStat)=>!s?'':!s.images?'画像なし':`学習対象 ${s.training_targets}/${s.images}枚`;
   const totals=summary?.totals;
@@ -321,6 +323,10 @@ export default function DatasetFiles({project,active=true,openRootRequest=0,onRe
       <main className="df-browser">
         <div className={`df-selection ${selected.length?'has-selection':''}`}><Text size="1" color="gray">{folder||'データセット'} · {items.length}枚</Text>{selected.length>0&&<Badge>{selected.length}枚 選択</Badge>}<div className="df-selection-actions"><Button size="1" variant="ghost" color="gray" disabled={!items.length} onClick={()=>setSelected(items.map(i=>i.relative))}>すべて選択</Button>{selected.length>0&&<><Button size="1" variant="ghost" color="gray" onClick={()=>setSelected([])}>解除</Button>{selectedDrafts.length>0&&<Button size="1" disabled={busy} onClick={()=>void saveSelected()}><Save size={13}/>選択分を保存</Button>}<DropdownMenu.Root><DropdownMenu.Trigger><Button size="1" variant="soft" color="gray" disabled={busy} ref={bulkTrigger}>タグ編集<DropdownMenu.TriggerIcon/></Button></DropdownMenu.Trigger><DropdownMenu.Content><DropdownMenu.Item onSelect={()=>{setBulkMode('add');setBulkFind('');setBulk('');}}>選択した画像のタグを編集…{instances.length>0?'（インスタンス割り当て含む）':''}</DropdownMenu.Item>{desktop()&&<DropdownMenu.Item disabled={!!selectedDrafts.length} onSelect={()=>setAutoTagOpen(true)}>画像からタグを自動生成…</DropdownMenu.Item>}</DropdownMenu.Content></DropdownMenu.Root>{selectedDrafts.length===0&&<><Button size="1" variant="soft" disabled={busy} title={needsCopy?"他の工程が参照している原本なので、コピーを作って学習に使います":"選択した画像だけを学習対象にします（フォルダ全体なら右の「全画像を学習対象にして学習設定へ」）"} onClick={()=>void (needsCopy?copyForTraining():register())}>{needsCopy?"学習用に複製":onPrepared?"学習対象にする":"学習素材に登録"}</Button><Button size="1" variant="ghost" color="gray" disabled={busy||hasProtected} title={hasProtected?"他の工程で参照中の原本です":undefined} ref={excludeTrigger} onClick={()=>setExcludeOpen(true)}>削除…</Button></>}</>}{canUndoBulk&&<Button size="1" variant="ghost" disabled={busy} onClick={undoBulk}>一括編集を戻す</Button>}{lastExcluded&&<Button size="1" variant="ghost" color="gray" disabled={busy} onClick={()=>void restoreFiles()}>退避を戻す</Button>}</div></div>
         <ContextMenu.Root><ContextMenu.Trigger><div ref={dnd.gridRef} onContextMenu={e=>{const card=(e.target as HTMLElement).closest<HTMLElement>("[data-dnd-id]");if(card){const id=card.dataset.dndId!;setSelected(values=>values.includes(id)?[...values.filter(v=>v!==id),id]:[id]);setAnchor(id);}else setSelected([]);}} data-dnd-zone="grid" className={`df-files ${view==='list'?'df-list':''} ${dnd.state?.kind==='external'&&dnd.state.target===folder?'df-drop':''}`} style={{'--thumb':`${size}px`} as React.CSSProperties} role="listbox" aria-label="画像ファイル" aria-multiselectable tabIndex={0} onKeyDown={e=>{if((e.ctrlKey||e.metaKey)&&e.key==='a'){e.preventDefault();setSelected(items.map(i=>i.relative));}}}>
+          {!folder&&!query&&!onlyEmpty&&videoJobs.length>0&&<button key="video-characters" type="button" className="df-folder-tile df-video-chars" onClick={()=>window.dispatchEvent(new CustomEvent('open-character-sets'))} title="全部の動画をまたいでキャラごとにまとめた画面を開く">
+            <span className="df-folder-mosaic">{videoJobs.slice(0,4).map(f=>f.preview?.[0]).filter(Boolean).map(p=><img key={p} draggable={false} src={`${API_BASE}/collector/thumbnail?path=${encodeURIComponent(p!)}&size=256`} alt="" loading="lazy"/>)}</span>
+            <span className="df-folder-tile-name"><Users size={13}/><Text size="1" weight="medium" truncate>動画をまたいだキャラ</Text></span>
+            <Text size="1" color="gray">全話まとめて表示</Text></button>}
           {!query&&!onlyEmpty&&data?.folders.map(f=><button key={`folder:${f.relative}`} type="button" className={`df-folder-tile ${dropClass(f.relative)}`} data-dnd-zone="folder" data-drop-folder={f.relative}
             onClick={()=>{setFolder(f.relative);setSelected([]);}} title={`${f.label||f.name}（クリックで開く）`}>
             <span className="df-folder-mosaic">{(f.preview||[]).slice(0,4).map(p=><img key={p} draggable={false} src={`${API_BASE}/collector/thumbnail?path=${encodeURIComponent(p)}&size=256`} alt="" loading="lazy"/>)}{!(f.preview||[]).length&&<Folder size={36}/>}</span>
