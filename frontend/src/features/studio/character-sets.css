@@ -17,7 +17,7 @@
 .cs-drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:64px;border:1px dashed var(--gray-a7);border-radius:6px;color:var(--gray-11);font-size:11px;cursor:pointer}
 .cs-drop.on{background:var(--red-a4);border-color:var(--red-8)}
 .cs-grid{overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:4px;padding:6px;align-content:start}
-.cs-grid-head{grid-column:1/-1}
+.cs-grid-head{grid-column:1/-1;display:flex;align-items:center;gap:10px;min-height:22px}
 .cs-grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:4px;cursor:pointer;outline:3px solid transparent;user-select:none}
 .cs-grid img.sel{outline-color:var(--accent-9)}
 .cs-zoom{position:fixed;inset:0;z-index:2147483000;pointer-events:auto;background:rgba(8,10,12,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#eef0f2}
@@ -27,3 +27,4 @@
 .cs-spacer{grid-column:1/-1}
 .cs-section{padding:10px 8px 4px;font-size:11px;color:var(--gray-10);border-top:1px solid var(--gray-a5);margin-top:6px}
 .cs-char.held{padding-left:18px}
+.cs-grid img.wrong{outline-color:var(--red-9);opacity:.45}

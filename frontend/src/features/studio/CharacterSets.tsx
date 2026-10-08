@@ -10,6 +10,7 @@ import './character-sets.css';
 // another to merge; Delete = to the bin; Ctrl+Z = undo; double-click = enlarge; double-click a name = rename.
 type Source={folder:string;name:string;videos:number;set_id:string;characters:number|null;computing:boolean};
 type Char={id:number;name:string;count:number;cover:string[];pending?:boolean;section?:string};
+type Calib={answered:number;right:number;wrong:number;need:number;line:{score:number;answers:number;precision:number}|null;above:Record<string,number>};
 type SetState={set_id:string;status:'ready'|'computing'|'error';error?:string;folder?:string;set_folder?:string;videos?:number;characters?:Char[];excluded?:number;can_undo?:boolean};
 const IMG='application/x-lora-images',CHAR='application/x-lora-character';
 const LAST='charsets:last-folder';
@@ -27,6 +28,17 @@ export default function CharacterSets(){
 
  useEffect(()=>{apiGet<{sources:Source[]}>('/character-sets/sources',30000).then(r=>{setSources(r.sources);if(!folder&&r.sources[0])setFolder(r.sources[0].folder);}).catch(e=>setError(String(e)));},[]);
  const loadSet=useCallback(async(id:string)=>{const s=await apiGet<SetState>(`/character-sets/${encodeURIComponent(id)}`,30000);setSet(s);return s;},[]);
+ // the user's decisions on candidates measure how far down a candidate pile can be trusted (backend: candidate_calibration)
+ const [calib,setCalib]=useState<Calib|null>(null);
+ const loadCalib=useCallback(async(id:string)=>{try{setCalib(await apiGet<Calib>(`/character-sets/${encodeURIComponent(id)}/calibration`,30000));}catch{setCalib(null);}},[]);
+ useEffect(()=>{if(set?.status==='ready'&&set.set_id)void loadCalib(set.set_id);},[set,loadCalib]);
+ // check mode: a sample spread over the pile's score range; the user marks the wrong ones, the rest count as right
+ const [checking,setChecking]=useState<{images:string[];wrong:Set<string>}|null>(null);
+ useEffect(()=>setChecking(null),[current]);
+ async function startCheck(){if(!set?.set_id)return;try{const r=await apiGet<{images:string[]}>(`/character-sets/${encodeURIComponent(set.set_id)}/check?character=${current}&n=30`,30000);setChecking({images:r.images,wrong:new Set()});}catch(e){setError(String(e));}}
+ async function submitCheck(){if(!checking||!set?.set_id)return;setBusy(true);
+  try{await apiPost(`/character-sets/${encodeURIComponent(set.set_id)}/judge`,{right:checking.images.filter(r=>!checking.wrong.has(r)),wrong:[...checking.wrong]},'POST',undefined,30000);
+   setChecking(null);await loadCalib(set.set_id);}catch(e){setError(String(e));}finally{setBusy(false);}}
  useEffect(()=>{if(!folder)return;try{localStorage.setItem(LAST,folder);}catch{}
   setSet(null);setCurrent('');setImages([]);
   apiPost<{set_id:string}>('/character-sets/open',{folder},'POST',undefined,60000).then(r=>loadSet(r.set_id)).catch(e=>setError(String(e)));},[folder,loadSet]);
@@ -78,6 +90,7 @@ export default function CharacterSets(){
   return {from:r0*cols,to:Math.min(images.length,r1*cols),before:r0?r0*row-GAP:0,after:r1<rows?(rows-r1)*row-GAP:0};},[view,images.length]);
  const chars=set?.characters??[];
  const src=sources.find(s=>s.folder===folder);
+ const isCandidates=chars.find(c=>String(c.id)===current)?.section==='candidates';
  const currentName=useMemo(()=>current==='excluded'?'除外':chars.find(c=>String(c.id)===current)?.name??'',[current,chars]);
  return <div className="cs-root">
   <div className="cs-bar">
@@ -110,11 +123,24 @@ export default function CharacterSets(){
    </div>
    <div className="cs-grid" ref={gridRef} onScroll={e=>{const t=e.currentTarget.scrollTop;setView(v=>v.top===t?v:{...v,top:t});}}
      onClick={e=>{if(e.target===e.currentTarget)setSel(new Set());}}>
-    <Text as="div" size="1" color="gray" className="cs-grid-head">{currentName}・{images.length}{sel.size?`（${sel.size}選択）`:''}</Text>
+    {checking?<>
+     <div className="cs-grid-head"><Text size="1" color="gray">{currentName}・違う画像をクリック（{checking.wrong.size}/{checking.images.length}）</Text>
+      <Button size="1" disabled={busy} onClick={()=>void submitCheck()}>決定</Button>
+      <Button size="1" variant="soft" color="gray" onClick={()=>setChecking(null)}>やめる</Button></div>
+     {checking.images.map(rel=><img key={rel} src={thumb(rel)} alt="" draggable={false} className={checking.wrong.has(rel)?'wrong':''}
+       onClick={()=>setChecking(c=>{if(!c)return c;const w=new Set(c.wrong);w.has(rel)?w.delete(rel):w.add(rel);return {...c,wrong:w};})}
+       onDoubleClick={()=>setZoom(images.indexOf(rel))}/>)}
+    </>:<>
+    <div className="cs-grid-head"><Text size="1" color="gray">{currentName}・{images.length}{sel.size?`（${sel.size}選択）`:''}</Text>
+     {isCandidates&&<Button size="1" variant="soft" color="gray" disabled={busy} onClick={()=>void startCheck()}
+       title="候補から少数を見て正誤を付けると、どこまで自動で入れてよいかを測ります">確認</Button>}
+     {isCandidates&&calib?.line&&calib.above[current]?<Button size="1" variant="soft" disabled={busy} onClick={()=>void act('/accept-above',{character:Number(current)})}
+          title={`あなたの判定${calib.line.answers}件で、この範囲の正解率${Math.round(calib.line.precision*100)}%`}>上位{calib.above[current]}枚を{currentName.replace(/の候補$/,'')}へ</Button>:null}</div>
     {win.before>0&&<div className="cs-spacer" style={{height:win.before}}/>}
     {images.slice(win.from,win.to).map((rel,k)=>{const i=win.from+k;return <img key={rel} src={thumb(rel)} alt="" draggable className={sel.has(rel)?'sel':''}
       onClick={e=>click(e,i)} onDoubleClick={()=>setZoom(i)} onDragStart={e=>dragImages(e,i)}/>;})}
     {win.after>0&&<div className="cs-spacer" style={{height:win.after}}/>}
+    </>}
    </div>
   </div>}
   {zoom!==null&&images[zoom]&&createPortal(<div className="cs-zoom" onClick={e=>{if(e.target===e.currentTarget)setZoom(null);}}>

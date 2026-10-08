@@ -77,6 +77,7 @@ def _set_dir(set_id: str) -> tuple[Path, Path]:
     for root in _roots():
         d = root / SETS / set_id
         if (d / "set.json").is_file():
+            _preload_tags(d)
             _set_dirs[set_id] = (root, d)
             return root, d
     raise HTTPException(404, "セットが見つかりません")
@@ -104,6 +105,24 @@ NAMING = 5
 HAIR_AGREE = 0.6   # a hair colour names the group only when this share of its images carries that colour tag
 FACE_SHARE = 0.35  # ...and this share shows a face (crop view close/upper/full); below it the group is parts, props, mascots
 _tags: dict[str, list[str]] = {}
+
+
+_tags_loaded: set[str] = set()
+
+
+def _preload_tags(d: Path) -> None:
+    """All crops' tags in one read from the set's feature file (opening 11,641 caption files one by one took 40 s cold)."""
+    key = str(d)
+    if key in _tags_loaded:
+        return
+    feat = d / "cache" / "feat.json"
+    if feat.is_file():
+        try:
+            for it in json.loads(feat.read_text(encoding="utf-8")):
+                _tags.setdefault(f"{svc.JOBS_DIRNAME}/{it['rel']}", it.get("tags", []))
+        except (OSError, ValueError, KeyError):
+            pass
+    _tags_loaded.add(key)
 
 
 def _crop_tags(root: Path, rel: str) -> list[str]:
@@ -289,6 +308,8 @@ def _compute(root: Path, d: Path, sid: str, jobs: list[str]) -> None:
             if r.returncode:
                 raise RuntimeError((r.stderr or r.stdout)[-400:])
         result = json.loads((cache / "characters_auto.json").read_text(encoding="utf-8"))
+        _tags_loaded.discard(str(d))
+        _preload_tags(d)
         _save(d, _from_result(root, result, svc.JOBS_DIRNAME + "/"), history=(d / "characters.json").is_file())
         _computing.pop(sid, None)
     except Exception as exc:  # noqa: BLE001
@@ -363,6 +384,96 @@ def images(set_id: str, character: str = Query(...)):
     if c is None:
         raise HTTPException(404, "キャラが見つかりません")
     return {"images": c["images"]}
+
+
+def _candidate_rows(d: Path, s: dict) -> list[dict]:
+    from ..services import candidate_calibration as cal
+    auto = d / "cache" / "characters_auto.json"
+    if not auto.is_file():
+        return []
+    judged = json.loads((d / "judged.json").read_text(encoding="utf-8")) if (d / "judged.json").is_file() else {}
+    rows = cal.answers(json.loads(auto.read_text(encoding="utf-8")).get("sections", []), s, svc.JOBS_DIRNAME + "/", judged)
+    pile = {c["id"]: c for c in s["characters"]}
+    for r in rows:  # "still waiting": in the candidate pile of the same character
+        c = pile.get(r["in"])
+        r["waiting"] = bool(c and c.get("section") == "candidates" and c.get("parent") == r["parent"])
+    return rows
+
+
+@router.get("/{set_id}/calibration")
+def calibration(set_id: str):
+    """How many candidate decisions the user has made, and - once they are enough and mostly right - the score line
+    above which the remaining candidates can be accepted, with the count per candidate pile."""
+    from ..services import candidate_calibration as cal
+    _root, d = _set_dir(set_id)
+    s = _load(d)
+    rows = _candidate_rows(d, s)
+    info = cal.line(rows)
+    per: dict[int, int] = {}
+    if info["line"]:
+        waiting = [r for r in rows if r["waiting"]]
+        for r in cal.above(waiting, info["line"]["score"]) + [r for r in waiting if r["label"] == 1]:
+            per[r["in"]] = per.get(r["in"], 0) + 1
+    return {**info, "need": cal.MIN_ANSWERS, "target": cal.TARGET, "above": per}
+
+
+@router.get("/{set_id}/check")
+def check_sample(set_id: str, character: int, n: int = 30):
+    """A quick check: n unanswered images of a candidate pile spread over its score range (best to worst)."""
+    from ..services import candidate_calibration as cal
+    _root, d = _set_dir(set_id)
+    s = _load(d)
+    rows = [r for r in _candidate_rows(d, s) if r["waiting"] and r["in"] == character]
+    return {"images": cal.sample(rows, max(5, min(60, n)), seed=len([r for r in rows if r["label"] is not None]))}
+
+
+class JudgeIn(BaseModel):
+    right: list[str]
+    wrong: list[str]
+
+
+@router.post("/{set_id}/judge")
+def judge(set_id: str, payload: JudgeIn):
+    """Answers from a check sample: these candidates are / are not the character (images are not moved)."""
+    _root, d = _set_dir(set_id)
+    with _lock:
+        f = d / "judged.json"
+        judged = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
+        judged.update({r: 1 for r in payload.right})
+        judged.update({r: 0 for r in payload.wrong})
+        svc.write_json(f, judged)
+    return {"judged": len(judged)}
+
+
+class AcceptIn(BaseModel):
+    character: int  # a candidate pile
+
+
+@router.post("/{set_id}/accept-above")
+def accept_above(set_id: str, payload: AcceptIn):
+    """Move the pile's undecided candidates that are within the measured line into their character (undoable)."""
+    from ..services import candidate_calibration as cal
+    root, d = _set_dir(set_id)
+    with _lock:
+        s = _load(d)
+        rows = _candidate_rows(d, s)
+        info = cal.line(rows)
+        if not info["line"]:
+            raise HTTPException(409, "まだ判定が足りません")
+        waiting = [r for r in rows if r["waiting"] and r["in"] == payload.character]
+        # the undecided ones within the line, and the ones the user already confirmed on a check sample
+        take = cal.above(waiting, info["line"]["score"]) + [r for r in waiting if r["label"] == 1]
+        if not take:
+            return {"moved": 0}
+        parent = take[0]["parent"]
+        moving = {r["rel"] for r in take}
+        for c in s["characters"]:
+            if c["id"] == payload.character:
+                c["images"] = [i for i in c["images"] if i not in moving]
+            elif c["id"] == parent:
+                c["images"] += [r["rel"] for r in take]
+        _save(d, _relabel(root, s))
+    return {"moved": len(take), "into": parent, "precision": info["line"]["precision"], "answers": info["line"]["answers"]}
 
 
 class MoveIn(BaseModel):

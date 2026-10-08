@@ -34,6 +34,7 @@ ap.add_argument("--main-share", type=float, default=0.04)
 ap.add_argument("--candidate", type=float, default=0.19)  # nearer than this to a main character -> its candidates (else 判定不能)
 ap.add_argument("--kind-penalty", type=float, default=0.3)  # 0.3: girl/boy mix 0.6% -> 0.0% at the same pending share (2026-10-09 sweep)
 ap.add_argument("--report", action="store_true")
+ap.add_argument("--version", type=int, default=2)  # output format; sets made from an older one are rebuilt once (undoable)
 args = ap.parse_args()
 prefix = Path(args.feat)
 F = np.load(prefix.with_suffix(".npy"))
@@ -298,13 +299,40 @@ for i in rest:
 
 # The two signals agreeing is still not proof (2026-10-09 check: back views and silhouettes of other people got in), so these
 # are not added to the character - they lead its candidates (most likely first), then the minor groups, then single crops.
+# Scene vote: the faces in the same scene (same video, same scene number) that belong to one main character.  It does not use
+# CCIP, so it still says something about back views and close-ups; alone it was right for 80% of known no-face images.
+scene_of = lambda i: items[i]["job"] + ":" + (items[i]["frame"].split(":")[1] if items[i]["frame"] else items[i]["rel"])
+scene_faces = defaultdict(list)
+for c, m in enumerate(main_idx):
+    for i in m:
+        if A[i]["face"]:
+            scene_faces[scene_of(int(i))].append(c)
+
+
+def scene_vote(i):
+    mates = scene_faces.get(scene_of(i), [])
+    if not mates:
+        return -2  # no face of a main character in this scene
+    c, k = Counter(mates).most_common(1)[0]
+    return c if k / len(mates) >= 0.8 else -1  # -1: several characters in the scene
+
+
+def score(i, c):
+    """Lower = more likely character c.  CCIP closeness, minus the lead over the runner-up, adjusted by the scene vote.
+    Only an ordering: how far down it can be trusted is measured from the user's own decisions (character_sets calibration)."""
+    s = knn[pos[i]]
+    other = np.delete(s, c).min() if len(s) > 1 else 9.0
+    v = scene_vote(i)
+    return float(s[c] - 0.5 * max(0.0, other - s[c]) + (-0.03 if v == c else 0.03 if v >= 0 else 0.0)), float(s[c]), float(other - s[c]), v
+
+
 sections = []
 for c in range(len(main)):
-    first = sorted(recovered[c], key=lambda i: knn[pos[i], c])
-    files = [items[i]["rel"] for i in first] + [f for b in sorted(cand_blocks[c], key=len, reverse=True) for f in b] + \
-        [items[i]["rel"] for _s, i in sorted(cand_single[c])]
-    if files:
-        sections.append({"section": "candidates", "main": c, "files": files, "blocks": [len(b) for b in cand_blocks[c]]})
+    members = [i for i in recovered[c]] + [rel_i[f] for b in cand_blocks[c] for f in b] + [i for _s, i in cand_single[c]]
+    scored = sorted(((score(i, c), i) for i in members), key=lambda x: x[0][0])
+    if scored:
+        sections.append({"section": "candidates", "main": c, "files": [items[i]["rel"] for _sc, i in scored],
+                         "scores": [[round(sc[0], 4), round(sc[1], 4), round(sc[2], 4), sc[3]] for sc, _i in scored]})
 for mc in sorted(others, key=lambda m: -m["images"]):
     sections.append({"section": "other", "files": mc["files"], "kind": mc["kind"], "gender": mc["gender"], "hair": mc["hair"]})
 if multi:
