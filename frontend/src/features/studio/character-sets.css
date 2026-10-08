@@ -24,3 +24,4 @@
 .cs-zoom img{height:min(88vh,1200px);width:auto;max-width:94vw;object-fit:contain;border-radius:6px;background:#000}
 .cs-path{background:none;border:none;padding:0 4px;font:inherit;font-size:11px;color:var(--gray-11);cursor:pointer;max-width:34%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
 .cs-path:hover{color:var(--accent-11);text-decoration:underline}
+.cs-spacer{grid-column:1/-1}

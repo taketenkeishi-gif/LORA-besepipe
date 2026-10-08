@@ -28,6 +28,8 @@ from . import dataset_files
 router = APIRouter(prefix="/character-sets", tags=["character-sets"])
 SETS = ".character-sets"
 TOOL = Path(__file__).resolve().parents[3] / "tools" / "video_dataset" / "crop_link.py"
+FEAT_TOOL = TOOL.with_name("crop_features.py")
+CLUSTER_TOOL = TOOL.with_name("crop_cluster.py")
 _lock = threading.Lock()
 _computing: dict[str, dict] = {}
 
@@ -98,7 +100,7 @@ def _save(d: Path, state: dict, history: bool = True) -> None:
     svc.write_json(d / "characters.json", state)
 
 
-NAMING = 2
+NAMING = 4
 HAIR_AGREE = 0.6   # a hair colour names the group only when this share of its images carries that colour tag
 FACE_SHARE = 0.35  # ...and this share shows a face (crop view close/upper/full); below it the group is parts, props, mascots
 _tags: dict[str, list[str]] = {}
@@ -123,38 +125,83 @@ def _describe(root: Path, images: list[str]) -> tuple[int, str]:
     from ..services import ja_names
     if not images:
         return 2, "空"
-    if sum(map(_shows_face, images)) / len(images) < FACE_SHARE:
-        return 2, "顔なし"
 
     def dominant(kind: str) -> tuple[str, float]:
+        """Most common colour tag and its share among the images that carry any colour tag of this kind (untagged
+        images - backs, hands, far shots - say nothing either way)."""
         counts: dict[str, int] = {}
+        tagged = 0
         for rel in images:
-            for t in {t for t in _crop_tags(root, rel) if t.endswith(f" {kind}") and t[: -len(kind) - 1] in ja_names.COLOURS}:
+            found = {t for t in _crop_tags(root, rel) if t.endswith(f" {kind}") and t[: -len(kind) - 1] in ja_names.COLOURS}
+            tagged += bool(found)
+            for t in found:
                 counts[t] = counts.get(t, 0) + 1
         if not counts:
             return "", 0.0
         tag = max(counts, key=counts.get)
-        return tag, counts[tag] / len(images)
+        return tag, counts[tag] / tagged
 
+    what = _what(root, images)
     hair, agree = dominant("hair")
+    if what == "マスコット":
+        colour = ja_names.COLOURS.get(hair[:-5], "") if agree >= HAIR_AGREE else ""
+        return 0, f"{colour}色系マスコット" if colour else "マスコット"
     if agree < HAIR_AGREE:
-        return 1, "髪色混在"
+        return (2, "顔なし") if sum(map(_shows_face, images)) / len(images) < FACE_SHARE else (1, "髪色混在")
     eyes, eye_agree = dominant("eyes")
-    return 0, ja_names.character(hair=hair, eyes=eyes if eye_agree >= 0.5 else "")
+    name = ja_names.character(hair=hair, eyes=eyes if eye_agree >= 0.5 else "")
+    return 0, "・".join(w for w in (name, what) if w)
+
+
+PENDING_NAME = "保留（未確定）"
+NONHUMAN = {"no humans", "creature", "pokemon (creature)", "furry", "animal", "mascot", "robot", "stuffed toy"}
+
+
+def _what(root: Path, images: list[str]) -> str:
+    """'マスコット' / '男子' / '' (girl or unknown) from the majority of the images' tags."""
+    kinds = {"creature": 0, "boy": 0, "girl": 0}
+    for rel in images:
+        tags = set(_crop_tags(root, rel))
+        if tags & NONHUMAN and "1girl" not in tags and "1boy" not in tags:
+            kinds["creature"] += 1
+        elif ("1boy" in tags or "male focus" in tags) and "1girl" not in tags:
+            kinds["boy"] += 1
+        elif "1girl" in tags:
+            kinds["girl"] += 1
+    top = max(kinds, key=kinds.get)
+    said = sum(kinds.values())
+    what = {"creature": "マスコット", "boy": "男子", "girl": ""}[top] if said and kinds[top] * 2 > said else ""
+    lengths = [t for rel in images for t in _crop_tags(root, rel) if t in ("short hair", "medium hair", "long hair", "very long hair")]
+    if what != "マスコット" and lengths and lengths.count("short hair") * 2 > len(lengths):
+        what = "・".join(w for w in (what, "短髪") if w)
+    return what
 
 
 def _relabel(root: Path, s: dict) -> dict:
-    """Name automatically named groups from their current images and list real characters first (largest first)."""
+    """Name automatically named groups from their current images; real characters first (largest first), the pending pile last.
+    Characters that would get the same name are told apart as A, B, C … (largest first)."""
     ranked = []
     for c in s["characters"]:
-        rank, label = _describe(root, c["images"]) if c.get("auto_name", True) else (0, c["name"])
+        if c.get("pending"):
+            rank, label = 3, PENDING_NAME
+        elif c.get("auto_name", True):
+            rank, label = _describe(root, c["images"])
+            label = label or "キャラ"
+        else:
+            rank, label = 0, c["name"]
         ranked.append((rank, -len(c["images"]), c, label))
     ranked.sort(key=lambda r: (r[0], r[1]))
-    used: dict[str, int] = {}
+    counts: dict[str, int] = {}
     for _rank, _n, c, label in ranked:
-        if c.get("auto_name", True):
-            used[label] = used.get(label, 0) + 1
-            c["name"] = label if used[label] == 1 else f"{label}（{used[label]}）"
+        if c.get("auto_name", True) and not c.get("pending"):
+            counts[label] = counts.get(label, 0) + 1
+    seen: dict[str, int] = {}
+    for _rank, _n, c, label in ranked:
+        if c.get("pending"):
+            c["name"] = PENDING_NAME
+        elif c.get("auto_name", True):
+            seen[label] = seen.get(label, 0) + 1
+            c["name"] = label if counts[label] == 1 else f"{label} {chr(64 + seen[label]) if seen[label] <= 26 else seen[label]}"
             c["auto_name"] = True
     s["characters"] = [r[2] for r in ranked]
     s["naming"] = NAMING
@@ -165,6 +212,15 @@ def _from_clusters(root: Path, clusters: list[dict], prefix: str) -> dict:
     chars = [{"id": i, "name": "", "auto_name": True, "images": [prefix + f for f in c["files"]]}
              for i, c in enumerate(sorted(clusters, key=lambda c: -c["images"]), 1)]
     return _relabel(root, {"version": 1, "characters": chars, "excluded": [], "next_id": len(chars) + 1})
+
+
+def _from_result(root: Path, result: dict, prefix: str) -> dict:
+    """crop_cluster.py output: sure characters, then one pending pile."""
+    chars = [{"id": i, "name": "", "auto_name": True, "images": [prefix + f for f in c["files"]]}
+             for i, c in enumerate(result["characters"], 1)]
+    chars.append({"id": len(chars) + 1, "name": PENDING_NAME, "auto_name": True, "pending": True,
+                  "images": [prefix + f for f in result["pending"]["files"]]})
+    return _relabel(root, {"version": 1, "characters": chars, "excluded": [], "next_id": len(chars) + 1, "clustering": result["params"]})
 
 
 @router.get("/sources")
@@ -196,12 +252,15 @@ def _compute(root: Path, d: Path, sid: str, jobs: list[str]) -> None:
         python, _comfy = svc.find_comfy()
         env = os.environ.copy()
         env.update({"CUDA_DEVICE_ORDER": "PCI_BUS_ID", "CUDA_VISIBLE_DEVICES": "1", "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"})
-        r = subprocess.run([str(python), "-X", "utf8", str(TOOL), str(cache / "links.json"), str(root / svc.JOBS_DIRNAME), str(cache / "jobs.json")],
-                           env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=7200)
-        if r.returncode:
-            raise RuntimeError((r.stderr or r.stdout)[-400:])
-        links = json.loads((cache / "links.json").read_text(encoding="utf-8"))
-        _save(d, _from_clusters(root, links["clusters"], svc.JOBS_DIRNAME + "/"), history=False)
+        # features are computed once per crop and reused; the distance matrix is cached next to them
+        for cmd in ([str(FEAT_TOOL), str(cache / "feat"), str(root / svc.JOBS_DIRNAME), str(cache / "jobs.json")],
+                    [str(CLUSTER_TOOL), str(cache / "feat"), str(cache / "characters_auto.json")]):
+            r = subprocess.run([str(python), "-X", "utf8", *cmd], env=env, capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=7200)
+            if r.returncode:
+                raise RuntimeError((r.stderr or r.stdout)[-400:])
+        result = json.loads((cache / "characters_auto.json").read_text(encoding="utf-8"))
+        _save(d, _from_result(root, result, svc.JOBS_DIRNAME + "/"), history=(d / "characters.json").is_file())
         _computing.pop(sid, None)
     except Exception as exc:  # noqa: BLE001
         _computing[sid] = {"error": str(exc)[-300:]}
@@ -248,7 +307,14 @@ def get_set(set_id: str):
     if not (d / "characters.json").is_file():
         return {"set_id": set_id, "status": "computing"}
     s = _load(d)
-    if s.get("naming") != NAMING:  # sets named by an older rule are renamed once (hand-given names are kept)
+    auto = d / "cache" / "characters_auto.json"
+    result = json.loads(auto.read_text(encoding="utf-8")) if auto.is_file() else None
+    if result and s.get("clustering") != result["params"]:
+        # the automatic grouping was redone with a newer rule: start from it once (the previous state stays undoable)
+        with _lock:
+            s = _from_result(root, result, svc.JOBS_DIRNAME + "/")
+            _save(d, s, history=True)
+    elif s.get("naming") != NAMING:  # names made by an older rule are updated once (hand-given names are kept)
         with _lock:
             s = _relabel(root, _load(d))
             _save(d, s, history=False)

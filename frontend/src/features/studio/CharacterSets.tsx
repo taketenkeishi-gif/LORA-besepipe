@@ -1,4 +1,4 @@
-import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
+import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {Button,Select,Spinner,Text} from '@radix-ui/themes';
 import {Plus,Trash2,Undo2} from 'lucide-react';
@@ -63,6 +63,19 @@ export default function CharacterSets(){
   else if((e.key==='Delete'||e.key==='Backspace')&&sel.size){e.preventDefault();move([...sel],'excluded');}};
  useEffect(()=>{const k=(e:KeyboardEvent)=>keyRef.current(e);window.addEventListener('keydown',k);return()=>window.removeEventListener('keydown',k);},[]);
 
+ // Only the rows in view (+2 above and below) exist in the page: a 6,000-image group used to take ~1 s just to create its elements.
+ // Cell geometry mirrors .cs-grid: padding 6, gap 4, columns of at least 132 px filling the width, square cells.
+ const gridRef=useRef<HTMLDivElement>(null);
+ const [view,setView]=useState({top:0,w:0,h:0});
+ // size is read directly on show (ResizeObserver alone does not report until the next painted frame)
+ useLayoutEffect(()=>{const g=gridRef.current;if(!g)return;const read=()=>setView(v=>({...v,w:g.clientWidth,h:g.clientHeight}));read();
+  const ro=new ResizeObserver(read);ro.observe(g);return()=>ro.disconnect();},[set?.status]);
+ useLayoutEffect(()=>{const g=gridRef.current;if(g){g.scrollTop=0;setView({top:0,w:g.clientWidth,h:g.clientHeight});}},[current]);
+ const win=useMemo(()=>{const PAD=6,GAP=4,MIN=132,HEAD=22;const inner=Math.max(MIN,view.w-PAD*2);
+  const cols=Math.max(1,Math.floor((inner+GAP)/(MIN+GAP)));const row=(inner-GAP*(cols-1))/cols+GAP;const rows=Math.ceil(images.length/cols);
+  if(!view.h)return {from:0,to:Math.min(images.length,cols*8),before:0,after:0};
+  const r0=Math.max(0,Math.floor((view.top-HEAD)/row)-2),r1=Math.min(rows,Math.ceil((view.top+view.h)/row)+2);
+  return {from:r0*cols,to:Math.min(images.length,r1*cols),before:r0?r0*row-GAP:0,after:r1<rows?(rows-r1)*row-GAP:0};},[view,images.length]);
  const chars=set?.characters??[];
  const src=sources.find(s=>s.folder===folder);
  const currentName=useMemo(()=>current==='excluded'?'除外':chars.find(c=>String(c.id)===current)?.name??'',[current,chars]);
@@ -95,10 +108,13 @@ export default function CharacterSets(){
     <div className={`cs-drop${over==='new'?' over':''}`} {...target('new')} title="ここにドロップで新しいキャラ"><Plus size={16}/></div>
     <div className={`cs-drop${over==='excluded'?' over':''}${current==='excluded'?' on':''}`} {...target('excluded')} onClick={()=>setCurrent('excluded')} title="除外（Delete）"><Trash2 size={16}/><span>{set.excluded}</span></div>
    </div>
-   <div className="cs-grid" onClick={e=>{if(e.target===e.currentTarget)setSel(new Set());}}>
+   <div className="cs-grid" ref={gridRef} onScroll={e=>{const t=e.currentTarget.scrollTop;setView(v=>v.top===t?v:{...v,top:t});}}
+     onClick={e=>{if(e.target===e.currentTarget)setSel(new Set());}}>
     <Text as="div" size="1" color="gray" className="cs-grid-head">{currentName}・{images.length}{sel.size?`（${sel.size}選択）`:''}</Text>
-    {images.map((rel,i)=><img key={rel} src={thumb(rel)} alt="" loading="lazy" draggable className={sel.has(rel)?'sel':''}
-      onClick={e=>click(e,i)} onDoubleClick={()=>setZoom(i)} onDragStart={e=>dragImages(e,i)}/>)}
+    {win.before>0&&<div className="cs-spacer" style={{height:win.before}}/>}
+    {images.slice(win.from,win.to).map((rel,k)=>{const i=win.from+k;return <img key={rel} src={thumb(rel)} alt="" draggable className={sel.has(rel)?'sel':''}
+      onClick={e=>click(e,i)} onDoubleClick={()=>setZoom(i)} onDragStart={e=>dragImages(e,i)}/>;})}
+    {win.after>0&&<div className="cs-spacer" style={{height:win.after}}/>}
    </div>
   </div>}
   {zoom!==null&&images[zoom]&&createPortal(<div className="cs-zoom" onClick={e=>{if(e.target===e.currentTarget)setZoom(null);}}>
