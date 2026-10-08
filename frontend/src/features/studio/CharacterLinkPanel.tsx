@@ -1,4 +1,6 @@
 import {useCallback,useEffect,useMemo,useState} from 'react';
+import {createPortal} from 'react-dom';
+const zoomBtn:React.CSSProperties={font:'inherit',fontSize:13,background:'#2a3036',color:'#eef0f2',border:'1px solid #444c55',borderRadius:6,padding:'5px 12px',cursor:'pointer'};
 import {Badge,Button,Callout,Checkbox,Flex,Spinner,Text,TextField} from '@radix-ui/themes';
 import {API_BASE,apiGet,apiPost} from '../../lib/api';
 
@@ -72,6 +74,7 @@ export default function CharacterLinkPanel({projectId,onCreated}:{projectId:numb
  const [res,setRes]=useState<Result|null>(null),[groups,setGroups]=useState<Group[]>([]),[picked,setPicked]=useState<Set<string>>(new Set()),[name,setName]=useState('');
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[created,setCreated]=useState<string[]>([]);
  const [loading,setLoading]=useState(true),[groupsOpen,setGroupsOpen]=useState(false);
+ const [zoom,setZoom]=useState<{list:string[];i:number}|null>(null);
  // candidates alone are enough to pick from; the full group list is fetched only when "pick by hand" is opened
  const load=useCallback(async()=>{try{setRes(await apiGet<Result>(`${base(projectId)}/result`,60000));}catch(e){setError(e instanceof Error?e.message:String(e));}finally{setLoading(false);}},[projectId]);
  const loadGroups=useCallback(async()=>{try{setGroups((await apiGet<{groups:Group[]}>(`${base(projectId)}/groups`,60000)).groups);}catch(e){setError(e instanceof Error?e.message:String(e));}},[projectId]);
@@ -112,7 +115,24 @@ export default function CharacterLinkPanel({projectId,onCreated}:{projectId:numb
    <Checkbox checked={picked.has(key(m))} onCheckedChange={v=>toggle([key(m)],v===true)} aria-label={`${m.video} ${m.folder}を選ぶ`}/>
    <Text size="1" style={{width:150,overflowWrap:'anywhere'}}>{m.video}<br/><span style={{color:'var(--gray-10)'}}>{m.images}枚・{m.folder.slice(8,34)}</span></Text><Strip pid={projectId} files={m.sample}/></Flex>)}</Flex></div>;
 
- return <div>
+ // Click any thumbnail -> full-resolution view; arrows step through the images of the same row/grid, Esc closes.
+ function openZoom(e:React.MouseEvent){
+  const t=e.target as HTMLElement;
+  if(t.tagName!=='IMG'||t.closest('[data-zoom]'))return;
+  const box=t.parentElement?.closest('div')||t.parentElement;
+  const list=[...(box?.querySelectorAll('img')??[])].map(i=>(i as HTMLImageElement).src);
+  setZoom({list,i:Math.max(0,list.indexOf((t as HTMLImageElement).src))});
+ }
+ useEffect(()=>{if(!zoom)return;const k=(e:KeyboardEvent)=>{if(e.key==='Escape')setZoom(null);if(e.key==='ArrowRight')setZoom(z=>z&&{...z,i:(z.i+1)%z.list.length});if(e.key==='ArrowLeft')setZoom(z=>z&&{...z,i:(z.i-1+z.list.length)%z.list.length});};window.addEventListener('keydown',k);return()=>window.removeEventListener('keydown',k);},[zoom]);
+ return <div onClick={openZoom}>
+  {/* rendered on <body>: inside the dialog it ends up behind it; pointer-events must be re-enabled because the modal disables them outside */}
+  {zoom&&createPortal(<div data-zoom onClick={e=>{e.stopPropagation();if(e.target===e.currentTarget)setZoom(null);}} style={{position:'fixed',inset:0,zIndex:2147483000,pointerEvents:'auto',background:'rgba(8,10,12,.92)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:10,padding:16}}>
+   <img src={zoom.list[zoom.i]} alt="" style={{height:'min(82vh,1100px)',width:'auto',maxWidth:'92vw',objectFit:'contain',borderRadius:6,background:'#000'}}/>
+   <div style={{display:'flex',gap:8,alignItems:'center'}}>
+    <button type="button" style={zoomBtn} onClick={()=>setZoom(z=>z&&{...z,i:(z.i-1+z.list.length)%z.list.length})}>← 前</button>
+    <span style={{color:'#eef0f2',fontSize:13}}>{zoom.i+1} / {zoom.list.length}</span>
+    <button type="button" style={zoomBtn} onClick={()=>setZoom(z=>z&&{...z,i:(z.i+1)%z.list.length})}>次 →</button>
+    <button type="button" style={zoomBtn} onClick={()=>setZoom(null)}>閉じる（Esc）</button></div></div>,document.body)}
   <Text as="p" size="2">複数の動画に分かれて出てきた同じキャラを集めて、1つのLoRA（新規プロジェクト）にまとめます。自動の候補を初期値にして、足し引きできます。各グループの衣装フォルダは、そのキャラの服装として引き継がれます。</Text>
   <Flex gap="3" align="center" wrap="wrap" mt="2"><Button disabled={res?.state.running} onClick={()=>void compute()}>{res?.state.running?<Spinner/>:null}{res?.auto?'結合候補を計算し直す':'結合候補を自動で計算する'}</Button>
    <Text size="1" color="gray">{res?.state.running?'計算中…（画像の特徴を比べています）':res?.state.error?`失敗: ${res.state.error}`:''}</Text></Flex>
