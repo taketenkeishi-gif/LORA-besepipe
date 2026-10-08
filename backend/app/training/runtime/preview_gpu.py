@@ -21,6 +21,8 @@ PREVIEW_URL = "http://127.0.0.1:8189"
 GPU_NAME = "RTX 3060"
 MARKER = "preview-parallel.json"
 IDLE_STOP_SECONDS = 300
+# preview conditions on the 3060 (user's pick from the measured comparison: 30/1024 72 s, 20/1024 48 s, 30/768 42 s, 20/768 25 s)
+CONDITIONS = {"steps": 20, "resolution": 768, "width": 768, "height": 768}
 _STATE = Path(__file__).resolve().parents[4] / ".runtime" / "preview-3060.json"
 
 

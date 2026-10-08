@@ -733,6 +733,13 @@ def _dispatch_pending_preview_jobs(conn, *, max_jobs: int | None = None) -> dict
         conditions_json = job["conditions_json"] or _conditions_json(
             conn, job["preview_model_family"], source="runtime_request"
         )
+        if on_3060:
+            # User choice 2026-10-08: on the 3060 previews use 20 steps at 768 px (~25 s instead of ~72 s at 30/1024).
+            # Recorded in the job's conditions so the gallery shows what was actually used.
+            c = json.loads(conditions_json)
+            c.update(preview_gpu_profile="gpu0", **preview_gpu.CONDITIONS)
+            conditions_json = json.dumps(c, ensure_ascii=False, sort_keys=True)
+            recorded_conditions = {**recorded_conditions, **preview_gpu.CONDITIONS}
         try:
             condition_source = str(recorded_conditions.get("source") or "runtime_request")
         except (TypeError, ValueError):
