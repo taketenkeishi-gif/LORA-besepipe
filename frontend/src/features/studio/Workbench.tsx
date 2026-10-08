@@ -1,7 +1,7 @@
 import {useEffect,useState,useRef} from 'react';
 import {Button,Dialog,Flex,Text,TextField,Spinner,Callout,Tabs,Popover,IconButton} from '@radix-ui/themes';
 import {Plus,ListChecks,Layers,X,FolderOpen,Check,ArrowLeft,SlidersHorizontal,RefreshCw,Users} from 'lucide-react';
-import CharacterSets from './CharacterSets';
+import VideoLoraWorkspace from './VideoLoraWorkspace';
 import {apiGet,apiPost} from '../../lib/api';
 import type {Project} from '../../types';
 import type {PreparedDataset} from './workbenchTypes';
@@ -47,6 +47,13 @@ export default function Workbench(){
   const [reloading,setReloading]=useState(false);
   const [chars,setChars]=useState(false);
   useEffect(()=>{const open=()=>setChars(true);window.addEventListener('open-character-sets',open);return()=>window.removeEventListener('open-character-sets',open);},[]);
+  // a project made in the video workspace opens in its own tab
+  useEffect(()=>{const open=async(e:Event)=>{const id=(e as CustomEvent<{id:number}>).detail?.id;if(!id)return;try{const rows=await apiGet<Project[]>('/projects');setProjects(rows);}catch{}
+    setOpenTabs(prev=>prev.includes(id)?prev:[...prev,id]);setSelected(id);setChars(false);};window.addEventListener('open-project',open);return()=>window.removeEventListener('open-project',open);},[]);
+  // the video pipeline runs in the background: its progress stays visible in the header on every screen
+  const [videoWork,setVideoWork]=useState('');
+  useEffect(()=>{const poll=()=>apiGet<{workspaces:{name:string;running:boolean;stage:string}[]}>('/character-sets/workspaces',20000).then(r=>{const w=r.workspaces.find(x=>x.running);setVideoWork(w?`${w.name}：${{videos:'動画を処理中',features:'特徴を計算中',characters:'キャラに分けています'}[w.stage]??'処理中'}`:'');}).catch(()=>{});
+    poll();const t=setInterval(poll,5000);return()=>clearInterval(t);},[]);
   async function reloadScreen(){setReloading(true);try{const pending:Promise<unknown>[]=[];window.dispatchEvent(new CustomEvent('workbench-before-reload',{detail:{waitUntil:(p:Promise<unknown>)=>pending.push(p)}}));await Promise.race([Promise.all(pending),new Promise((_,reject)=>setTimeout(()=>reject(new Error('設定の保存を確認できませんでした。再読み込みは行っていません')),10000))]);window.location.reload();}catch(e){setError(String(e));setReloading(false);}}
   const [projects,setProjects]=useState<Project[]>([]),[selected,setSelected]=useState<number|null>(null);
   const [openTabs,setOpenTabs]=useState<number[]>([]);
@@ -82,10 +89,10 @@ export default function Workbench(){
       <Button size="1" variant="soft" color="gray" disabled={reloading} title="画面だけ更新します。学習とサーバーは停止しません" onClick={()=>void reloadScreen()}>{reloading?<Spinner/>:<RefreshCw size={14}/>}画面を再読み込み</Button>
       <Popover.Root open={openMenu} onOpenChange={v=>{setOpenMenu(v);if(v)setProjectQuery('');}}><Popover.Trigger><IconButton size="1" variant="ghost" color="gray" aria-label="プロジェクトをタブで開く" title="プロジェクトをタブで開く"><Plus size={17}/></IconButton></Popover.Trigger><Popover.Content align="end" className="wb-project-picker"><TextField.Root aria-label="プロジェクトを検索" placeholder="プロジェクトを検索" value={projectQuery} onChange={e=>setProjectQuery(e.target.value)}/><div className="wb-project-choices">{projects.filter(p=>p.name.toLowerCase().includes(projectQuery.toLowerCase())).map(p=><button key={p.id} className="wb-project-choice" type="button" onClick={()=>choose(p.id)}><FolderOpen size={15}/><span><strong>{p.name}</strong><small>{p.dataset_dir}</small></span>{openTabs.includes(p.id)&&<Check size={14}/>}</button>)}</div><Button size="2" variant="soft" onClick={()=>{setOpenMenu(false);setCreate(true);}}><Plus size={14}/>新しいプロジェクト</Button></Popover.Content></Popover.Root>
       {desktop()&&<Button size="1" variant="soft" color="gray" disabled={openingFolder} onClick={()=>void openFolder()} title="既存フォルダをその場所で開く（画像はコピーしません）">{openingFolder?<Spinner/>:<FolderOpen size={14}/>}フォルダを開く</Button>}
-      <Button size="1" variant={chars?'solid':'soft'} color={chars?undefined:'gray'} onClick={()=>setChars(v=>!v)} title="動画から見つけたキャラの結合を編集"><Users size={14}/>動画のキャラ</Button>
+      <Button size="1" variant={chars?'solid':'soft'} color={chars?undefined:'gray'} onClick={()=>setChars(v=>!v)} title="動画のフォルダから、キャラ分け・確認・LoRAのプロジェクト作成まで">{videoWork?<Spinner/>:<Users size={14}/>}{videoWork||'動画からLoRA'}</Button>
     </header>
     {error&&<Callout.Root color="red"><Callout.Text>{error}</Callout.Text><Button size="1" onClick={()=>void load()}>再接続</Button></Callout.Root>}
-    {chars&&<main className="wb-canvas"><CharacterSets/></main>}
+    {chars&&<main className="wb-canvas"><VideoLoraWorkspace/></main>}
     <main className="wb-canvas" hidden={chars}>{loading?<Flex justify="center" align="center" height="300px"><Spinner size="3"/></Flex>:opened.length?opened.map(p=><Tabs.Content key={p.id} value={String(p.id)} forceMount className="wb-project-panel">{(visited.includes(p.id)||selected===p.id)&&<ProjectCanvas project={p} active={selected===p.id} openRootRequest={rootRequests[p.id]||0}/>}</Tabs.Content>):<Flex direction="column" align="center" justify="center" gap="4" height="400px"><Text color="gray">プロジェクトをタブで開いて作業を開始</Text><Button onClick={()=>setOpenMenu(true)}><FolderOpen size={16}/>プロジェクトを開く</Button><Button variant="soft" onClick={()=>setCreate(true)}><Plus size={16}/>新しいプロジェクト</Button></Flex>}</main>
     <Dialog.Root open={create} onOpenChange={setCreate}><Dialog.Content maxWidth="400px"><Dialog.Title>新しいプロジェクト</Dialog.Title><Dialog.Description size="2" mb="4">キャラクターや学習内容が分かる名前</Dialog.Description><form onSubmit={e=>{e.preventDefault();void createProject();}}><TextField.Root autoFocus aria-label="プロジェクト名" value={name} onChange={e=>setName(e.target.value)} placeholder="名前"/><Flex justify="end" gap="3" mt="5"><Dialog.Close><Button type="button" variant="soft" color="gray">キャンセル</Button></Dialog.Close><Button type="submit" disabled={!name.trim()||creating}>作成</Button></Flex></form></Dialog.Content></Dialog.Root>
   </Tabs.Root>;

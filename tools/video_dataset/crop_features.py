@@ -4,7 +4,7 @@ python crop_features.py OUT_PREFIX JOBS_ROOT JOBS.json
 Writes OUT_PREFIX.npy (float32, one row per crop) and OUT_PREFIX.json (items in the same order).
 Already computed rows are reused when OUT_PREFIX.* exist (keyed by crop path + file size + mtime), so adding a video only embeds its crops.
 """
-import argparse, json, re, sys, time
+import argparse, json, os, re, sys, time
 from pathlib import Path
 
 import numpy as np
@@ -52,7 +52,13 @@ if todo:
     from ccip import Ccip  # noqa: E402
 
     cc = Ccip(0 if torch.cuda.is_available() else None)
-    new = cc.feat([root / items[k]["rel"] for k in todo])
+    progress = os.environ.get("PROGRESS_FILE")
+    parts = []
+    for a in range(0, len(todo), 256):  # in chunks, so the app can show how far it is
+        parts.append(cc.feat([root / items[k]["rel"] for k in todo[a:a + 256]]))
+        if progress:
+            Path(progress).write_text(json.dumps({"done": min(a + 256, len(todo)), "total": len(todo), "elapsed_s": round(time.time() - t0, 1)}), encoding="utf-8")
+    new = np.concatenate(parts)
     F = np.zeros((n, new.shape[1]), np.float32)
     F[todo] = new
 else:

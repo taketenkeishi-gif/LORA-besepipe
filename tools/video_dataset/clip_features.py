@@ -46,6 +46,8 @@ if todo:
         E[idx] = e.astype(np.float16)
         if (a // B) % 20 == 0:
             print(f"{a + len(idx)}/{len(todo)} {time.time() - t0:.0f}s", flush=True)
+        if os.environ.get("PROGRESS_FILE"):
+            Path(os.environ["PROGRESS_FILE"]).write_text(json.dumps({"done": a + len(idx), "total": len(todo), "elapsed_s": round(time.time() - t0, 1)}), encoding="utf-8")
 np.save(out, E)
 keys.write_text(json.dumps(want), encoding="utf-8")
 print(f"done -> {out}", flush=True)

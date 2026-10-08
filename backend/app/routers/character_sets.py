@@ -12,6 +12,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -316,6 +317,85 @@ def _compute(root: Path, d: Path, sid: str, jobs: list[str]) -> None:
         _computing[sid] = {"error": str(exc)[-300:]}
 
 
+def _project_under(root: Path) -> tuple[int, Path] | None:
+    """A project whose dataset folder sits in root (its video jobs go to root/.video-datasets)."""
+    conn = get_conn()
+    try:
+        ids = [int(r["id"]) for r in conn.execute("SELECT id FROM projects")]
+    finally:
+        conn.close()
+    for pid in ids:
+        try:
+            ds = dataset_files.root_for(pid)
+        except Exception:  # noqa: BLE001
+            continue
+        if svc.jobs_root_for(ds).parent == root:
+            return pid, ds
+    return None
+
+
+def _finalize(root: Path, d: Path):
+    def done(result: dict) -> None:
+        with _lock:
+            _tags_loaded.discard(str(d))
+            _preload_tags(d)
+            meta = json.loads((d / "set.json").read_text(encoding="utf-8")) if (d / "set.json").is_file() else {}
+            meta["jobs"] = json.loads((d / "cache" / "jobs.json").read_text(encoding="utf-8"))
+            svc.write_json(d / "set.json", meta)
+            _save(d, _from_result(root, result, svc.JOBS_DIRNAME + "/"), history=(d / "characters.json").is_file())
+    return done
+
+
+@router.post("/workspace")
+def workspace(payload: OpenIn):
+    """Open (or create) the workspace for a folder of videos and run whatever is not done yet: extraction of new episodes,
+    then grouping into characters, then outfit features.  Progress: GET /{set_id} -> pipeline."""
+    from ..services import video_lora_pipeline as pipe
+    folder = Path(payload.folder.strip().strip('"'))
+    if not pipe.list_videos(folder):
+        raise HTTPException(404, "このフォルダに動画がありません")
+    sid = _slug(folder)
+    roots = _roots()
+    root = next((r for r in roots if (r / SETS / sid / "set.json").is_file()), roots[0] if roots else None)
+    target = _project_under(root) if root else None
+    if target is None:
+        raise HTTPException(409, "動画の保存先になるプロジェクトがありません。先にデータセットのプロジェクトを1つ作ってください")
+    pid, ds = target
+    d = root / SETS / sid
+    d.mkdir(parents=True, exist_ok=True)
+    if not (d / "set.json").is_file():
+        svc.write_json(d / "set.json", {"folder": str(folder), "jobs": [], "created": time.time()})
+    _set_dirs[sid] = (root, d)
+    st = pipe.start(sid, d, folder, ds, pid, _finalize(root, d))
+    return {"set_id": sid, "pipeline": st}
+
+
+@router.get("/workspaces")
+def workspaces():
+    """Every workspace (folder of videos) with its stage, newest first."""
+    from ..services import video_lora_pipeline as pipe
+    out = []
+    for root in _roots():
+        base = root / SETS
+        for d in base.iterdir() if base.is_dir() else []:
+            if not (d / "set.json").is_file():
+                continue
+            meta = json.loads((d / "set.json").read_text(encoding="utf-8"))
+            st = pipe.load(d)
+            out.append({"set_id": d.name, "folder": meta.get("folder", ""), "name": Path(meta.get("folder", d.name)).name,
+                        "videos": len(st.get("videos") or meta.get("jobs") or []), "stage": st.get("stage") or ("ready" if (d / "characters.json").is_file() else ""),
+                        "running": pipe.is_running(d.name), "updated": (d / "set.json").stat().st_mtime})
+    return {"workspaces": sorted(out, key=lambda w: -w["updated"])}
+
+
+@router.post("/{set_id}/pipeline/cancel")
+def pipeline_cancel(set_id: str):
+    from ..services import video_lora_pipeline as pipe
+    _set_dir(set_id)
+    pipe.cancel(set_id)
+    return {"ok": True}
+
+
 @router.post("/open")
 def open_set(payload: OpenIn):
     folder = Path(payload.folder)
@@ -352,10 +432,14 @@ def get_set(set_id: str):
     if set_id in _computing:
         st = _computing[set_id]
         return {"set_id": set_id, "status": "error" if "error" in st else "computing", "error": st.get("error", "")}
+    from ..services import video_lora_pipeline as pipe
     root, d = _set_dir(set_id)
     meta = json.loads((d / "set.json").read_text(encoding="utf-8"))
+    pl = pipe.load(d)
+    pl["running"] = pipe.is_running(set_id)
     if not (d / "characters.json").is_file():
-        return {"set_id": set_id, "status": "computing"}
+        return {"set_id": set_id, "status": "error" if pl.get("stage") == "error" else "computing", "error": pl.get("error", ""),
+                "folder": meta.get("folder", ""), "pipeline": pl}
     s = _load(d)
     auto = d / "cache" / "characters_auto.json"
     result = json.loads(auto.read_text(encoding="utf-8")) if auto.is_file() else None
@@ -371,7 +455,7 @@ def get_set(set_id: str):
     _start_warm(root, d, set_id)
     return {"set_id": set_id, "status": "ready", "folder": meta["folder"], "set_folder": str(d), "videos": len(meta["jobs"]),
             "characters": [{"id": c["id"], "name": c["name"], "count": len(c["images"]), "cover": c["images"][:1], "pending": bool(c.get("pending")), "section": c.get("section", "")} for c in s["characters"] if c["images"]],
-            "excluded": len(s["excluded"]), "can_undo": any((d / "history").glob("*.json")) if (d / "history").is_dir() else False}
+            "excluded": len(s["excluded"]), "can_undo": any((d / "history").glob("*.json")) if (d / "history").is_dir() else False, "pipeline": pl}
 
 
 @router.get("/{set_id}/images")
@@ -474,6 +558,179 @@ def accept_above(set_id: str, payload: AcceptIn):
                 c["images"] += [r["rel"] for r in take]
         _save(d, _relabel(root, s))
     return {"moved": len(take), "into": parent, "precision": info["line"]["precision"], "answers": info["line"]["answers"]}
+
+
+_items_cache: dict[str, dict[str, dict]] = {}
+
+
+def _items(d: Path) -> dict[str, dict]:
+    """rel (with the jobs prefix) -> crop facts from the set's feature file (video, job, frame, view)."""
+    key = str(d)
+    feat = d / "cache" / "feat.json"
+    stamp = f"{key}|{feat.stat().st_mtime if feat.is_file() else 0}"
+    if stamp not in _items_cache:
+        _items_cache.clear()
+        data = json.loads(feat.read_text(encoding="utf-8")) if feat.is_file() else []
+        _items_cache[stamp] = {f"{svc.JOBS_DIRNAME}/{it['rel']}": it for it in data}
+    return _items_cache[stamp]
+
+
+def _refs(images: list[str], items: dict[str, dict], n: int = 6) -> list[str]:
+    """n face shots of a character, from as many different videos as possible (the picture the user compares against)."""
+    faces = [r for r in images if (items.get(r) or {}).get("view", "").split("-")[-1] in ("close", "upper")] or images
+    by_video: dict[str, list[str]] = {}
+    for r in faces:
+        by_video.setdefault((items.get(r) or {}).get("job", ""), []).append(r)
+    out, k = [], 0
+    pools = sorted(by_video.values(), key=len, reverse=True)
+    while len(out) < n and any(k < len(p) for p in pools):
+        for p in pools:
+            if k < len(p) and len(out) < n:
+                out.append(p[len(p) * k // max(1, (n // max(1, len(pools))) + 1) if k else 0] if k else p[0])
+        k += 1
+        if k > 50:
+            break
+    return list(dict.fromkeys(out))[:n]
+
+
+@router.get("/{set_id}/outfits")
+def outfits(set_id: str, character: int):
+    """A character's images grouped by outfit (a suggestion, see services/outfit_split.py); cached per image list."""
+    from ..services import outfit_split
+    root, d = _set_dir(set_id)
+    s = _load(d)
+    c = next((c for c in s["characters"] if c["id"] == character), None)
+    if c is None:
+        raise HTTPException(404, "キャラが見つかりません")
+    key = hashlib.sha1("\n".join(sorted(c["images"])).encode()).hexdigest()[:16]
+    cached = d / "cache" / "outfits" / f"{key}.json"
+    if cached.is_file():
+        return json.loads(cached.read_text(encoding="utf-8"))
+    _preload_tags(d)
+    out = {"outfits": outfit_split.split(c["images"], lambda r: _crop_tags(root, r))}
+    cached.parent.mkdir(parents=True, exist_ok=True)
+    svc.write_json(cached, out)
+    return out
+
+
+@router.get("/{set_id}/rows")
+def rows(set_id: str, character: int):
+    """A pending pile as rows to compare: each row = images of one video's nearby scenes that most likely belong to the same
+    character (its nearest main character), with that character's reference shots.  Rows in order of likelihood."""
+    root, d = _set_dir(set_id)
+    s = _load(d)
+    pile = next((c for c in s["characters"] if c["id"] == character), None)
+    if pile is None:
+        raise HTTPException(404, "キャラが見つかりません")
+    mains = {c["id"]: c for c in s["characters"] if not c.get("pending")}
+    auto = d / "cache" / "characters_auto.json"
+    near: dict[str, tuple[int, float]] = {}
+    if auto.is_file():
+        for sec in json.loads(auto.read_text(encoding="utf-8")).get("sections", []):
+            pre = svc.JOBS_DIRNAME + "/"
+            if sec.get("section") == "candidates":
+                for f, sc in zip(sec["files"], sec.get("scores", [])):
+                    near[pre + f] = (sec["main"] + 1, sc[0])
+            else:
+                for f, nr in zip(sec["files"], sec.get("nearest", [])):
+                    near[pre + f] = (nr[0] + 1, nr[1])
+    items = _items(d)
+    groups: dict[tuple, list[tuple[int, str, float]]] = {}
+    for r in pile["images"]:
+        dest, score = near.get(r, (None, 9.0))
+        dest = dest if dest in mains else None
+        it = items.get(r) or {}
+        sc = it.get("frame", "").split(":")[1] if it.get("frame") else ""
+        groups.setdefault((dest, it.get("job", "")), []).append((int(sc[1:]) if sc[1:].isdigit() else 0, r, score))
+    out = []
+    for (dest, job), members in groups.items():
+        members.sort()
+        chunk: list[tuple[int, str, float]] = []
+        for m in members:  # neighbouring scenes of one video, rows of 8-40 images
+            if chunk and (len(chunk) >= 40 or (len(chunk) >= 8 and m[0] - chunk[-1][0] > 3)):
+                out.append((dest, job, chunk)); chunk = []
+            chunk.append(m)
+        if chunk:
+            out.append((dest, job, chunk))
+    rows_out = [{"dest": dest, "video": (items.get(ch[0][1]) or {}).get("video", ""), "files": [m[1] for m in ch],
+                 "score": round(min(m[2] for m in ch), 4)} for dest, job, ch in out]
+    rows_out.sort(key=lambda r: (r["dest"] is None, r["score"]))
+    used = {r["dest"] for r in rows_out if r["dest"] is not None}
+    return {"rows": rows_out, "refs": {str(k): _refs(mains[k]["images"], items) for k in used},
+            "characters": [{"id": c["id"], "name": c["name"]} for c in mains.values()]}
+
+
+class ComposeOutfit(BaseModel):
+    name: str
+    files: list[str]
+    use: bool = True
+
+
+class ComposeChar(BaseModel):
+    id: int
+    name: str
+    outfits: list[ComposeOutfit]
+
+
+class ComposeIn(BaseModel):
+    characters: list[ComposeChar]
+    min_instance_images: int = 30
+
+
+@router.post("/{set_id}/compose")
+def compose(set_id: str, payload: ComposeIn):
+    """One LoRA project per chosen character: its images copied with their captions, every used outfit with enough images
+    becomes an instance (ch01_o01 …), the rest are character-only.  The set and the per-video crops are not changed."""
+    from ..schemas import ProjectCreate
+    from . import projects
+    from .dataset_video_chars import _register_concepts, _unique_project_name, safe_project_name
+    if not payload.characters:
+        raise HTTPException(422, "LoRAにするキャラを選んでください")
+    root, d = _set_dir(set_id)
+    items = _items(d)
+    made = []
+    char_re, outfit_re = re.compile(r"^ch\d+$"), re.compile(r"^ch\d+_o\d+$")
+    for ch in payload.characters:
+        with dataset_files.database_connection() as conn:
+            name = _unique_project_name(conn, safe_project_name(ch.name))
+        created = projects.create_project(ProjectCreate(name=name, project_type="character"))
+        try:
+            new_char = "ch01"
+            dest_root = Path(created.dataset_dir)
+            instances, total, k = [], 0, 0
+            for o in ch.outfits:
+                if not o.files:
+                    continue
+                inst = o.use and len(o.files) >= payload.min_instance_images and o.name != "その他の衣装"
+                trig = ""
+                if inst:
+                    k += 1
+                    trig = f"{new_char}_o{k:02d}"
+                    instances.append({"name": o.name, "trigger": trig, "images": len(o.files)})
+                folder = dest_root / (f"{trig}_{safe_project_name(o.name)}" if trig else "キャラのみ（衣装インスタンスなし）")
+                folder.mkdir(parents=True, exist_ok=True)
+                for rel in o.files:
+                    src = (root / rel).resolve()
+                    if not src.is_relative_to((root / svc.JOBS_DIRNAME).resolve()) or not src.is_file():
+                        continue
+                    video = (items.get(rel) or {}).get("video") or src.parent.parent.name
+                    stem = f"{safe_project_name(video)}_{src.stem}"
+                    shutil.copy2(src, folder / f"{stem}{src.suffix.lower()}")
+                    total += 1
+                    cap = src.with_suffix(".txt")
+                    tokens = [t.strip() for t in cap.read_text(encoding="utf-8-sig").split(",")] if cap.is_file() else []
+                    tokens = [t for t in tokens if t and not outfit_re.match(t)]
+                    tokens = [t for t in tokens if not char_re.match(t)]
+                    (folder / f"{stem}.txt").write_text(", ".join([new_char] + ([trig] if trig else []) + tokens), encoding="utf-8", newline="")
+            with dataset_files.database_connection() as conn:
+                concepts = _register_concepts(conn, created.id, {}, new_char, {i["name"]: ("", i["trigger"]) for i in instances}, name)
+        except Exception:
+            with dataset_files.database_connection() as conn:
+                conn.execute("DELETE FROM projects WHERE id=?", (created.id,))
+            shutil.rmtree(Path(created.base_dir), ignore_errors=True)
+            raise
+        made.append({"project_id": created.id, "name": name, "images": total, "instances": instances, "concepts": len(concepts)})
+    return {"projects": made}
 
 
 class MoveIn(BaseModel):

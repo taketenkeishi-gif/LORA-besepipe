@@ -2,8 +2,6 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import {Badge,Button,Callout,Checkbox,Dialog,Flex,Progress,SegmentedControl,Spinner,Text,TextField} from '@radix-ui/themes';
 import {API_BASE,apiGet,apiPost} from '../../lib/api';
 import {desktop} from './desktopBridge';
-import CharacterVideoDataset from './CharacterVideoDataset';
-import CharacterLinkPanel from './CharacterLinkPanel';
 
 type Item={index:number;start:number;end:number;timestamp:number;sharpness:number;score:number|null;matched:string[];tags:string};
 type Job={status:'running'|'done'|'cancelled'|'error';stage:string;done:number;total:number;error:string;video:string;items:Item[];ranking:{signature:string[];enabled:boolean;reason:string}};
@@ -13,7 +11,7 @@ const AUTO_SELECT_SCORE=0.4;
 const mmss=(s:number)=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
 
 export default function VideoImportDialog({open,onOpenChange,projectId,folder,onAdded}:{open:boolean;onOpenChange:(open:boolean)=>void;projectId:number;folder:string;onAdded:(count:number,skipped:number)=>void}){
- const [mode,setMode]=useState<'quick'|'chars'|'link'>('quick');
+ const mode='quick';
  const [path,setPath]=useState(''),[sensitivity,setSensitivity]=useState('normal'),[rank,setRank]=useState(true);
  const [jobId,setJobId]=useState(''),[job,setJob]=useState<Job|null>(null),[picked,setPicked]=useState<Set<number>>(new Set()),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const autoSelected=useRef('');
@@ -50,13 +48,9 @@ export default function VideoImportDialog({open,onOpenChange,projectId,folder,on
  const progressValue=useMemo(()=>job&&job.total>0?Math.round(job.done/job.total*100):0,[job]);
 
  return <Dialog.Root open={open} onOpenChange={onOpenChange}><Dialog.Content maxWidth="980px" aria-describedby={undefined}>
-  <Dialog.Title>{mode==='quick'?'動画からシーンごとに1枚ずつ追加':mode==='chars'?'動画からキャラ別データセットを作る':'複数の動画からキャラをまとめて1つのLoRAにする'}</Dialog.Title>
-  <Flex gap="2" wrap="wrap" mb="3" role="group" aria-label="作り方">
-   <Button size="1" variant={mode==='quick'?'solid':'soft'} color={mode==='quick'?undefined:'gray'} aria-pressed={mode==='quick'} onClick={()=>setMode('quick')}>シーンごとに1枚ずつ追加</Button>
-   <Button size="1" variant={mode==='chars'?'solid':'soft'} color={mode==='chars'?undefined:'gray'} aria-pressed={mode==='chars'} onClick={()=>setMode('chars')} style={{whiteSpace:'normal',height:'auto',minHeight:'var(--space-5)',textAlign:'left'}}>キャラ別データセットを作る（人物ごとに切り抜き・衣装仕分け）</Button>
-   <Button size="1" variant={mode==='link'?'solid':'soft'} color={mode==='link'?undefined:'gray'} aria-pressed={mode==='link'} onClick={()=>setMode('link')} style={{whiteSpace:'normal',height:'auto',minHeight:'var(--space-5)',textAlign:'left'}}>複数の動画のキャラをまとめて1つのLoRAにする</Button></Flex>
-  {mode==='chars'&&<CharacterVideoDataset open={open} projectId={projectId} onAdded={onAdded}/>}
-  {mode==='link'&&<CharacterLinkPanel projectId={projectId} onCreated={()=>{}}/>}
+  <Dialog.Title>動画からシーンごとに1枚ずつ追加</Dialog.Title>
+  <Flex gap="2" align="center" mb="3"><Text size="1" color="gray">キャラごとに分けてLoRAを作るときは</Text>
+   <Button size="1" variant="soft" onClick={()=>{onOpenChange(false);window.dispatchEvent(new CustomEvent('open-character-sets'));}}>動画からLoRA を開く</Button></Flex>
   {mode==='quick'&&<>
   <Text as="p" size="2" color="gray" mb="3">動画をカットごとに区切り、各カットのいちばんくっきりした1枚だけを候補にします。全フレームは取り込みません。追加先：{folder||'データセット'}</Text>
   <Flex gap="2" align="end" wrap="wrap">
@@ -92,6 +86,5 @@ export default function VideoImportDialog({open,onOpenChange,projectId,folder,on
   </>}
   <Flex gap="3" justify="end" mt="4"><Button variant="soft" color="gray" onClick={()=>onOpenChange(false)}>閉じる</Button><Button disabled={!finished||!picked.size||busy} onClick={()=>void add()}>{busy&&finished?<Spinner/>:null}{picked.size}枚をデータセットに追加</Button></Flex>
   </>}
-  {(mode==='chars'||mode==='link')&&<Flex justify="end" mt="4"><Button variant="soft" color="gray" onClick={()=>onOpenChange(false)}>閉じる</Button></Flex>}
  </Dialog.Content></Dialog.Root>;
 }

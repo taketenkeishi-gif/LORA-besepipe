@@ -128,6 +128,9 @@ export function useDatasetDrag(props:Props){
     const guard=(e:DragEvent)=>{
       const types=Array.from(e.dataTransfer?.types||[]);const files=types.includes('Files');const uri=types.includes('text/uri-list')||types.includes('text/html');
       if(!files&&!uri)return;
+      // a drag inside the app (images or characters of the video workspace) is not an external drop: an <img> drag also carries
+      // uri-list/html, and refusing it here made every drop target of the app reject the drag (dropEffect none)
+      if(types.some(t=>t.startsWith('application/x-lora-')))return;
       if(!files&&(e.target as HTMLElement)?.closest('textarea,input,[contenteditable=true]'))return;
       e.preventDefault();
       const zone=(e.target as HTMLElement)?.closest<HTMLElement>('[data-dnd-zone]');

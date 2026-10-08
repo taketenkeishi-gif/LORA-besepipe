@@ -9,6 +9,7 @@ export type NamingPlan={numbering?:'append'|'manual';assigned_start?:number|null
 declare global {interface Window {loraDesktop?:{
  openDatasetFolder:()=>Promise<Project|null>;
  chooseVideo?:()=>Promise<string|null>;
+ chooseVideoFolder?:()=>Promise<string|null>;
  revealPreset?:(id?:string|null)=>Promise<string>;
  previewNormalize:(p:NormalizeSettings)=>Promise<NormalizePreview>;
  applyNormalize:(p:NormalizeSettings&{expected:NormalizePreview['items']})=>Promise<{folder:string;relatives:string[];count:number}>;

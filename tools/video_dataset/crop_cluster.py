@@ -333,12 +333,21 @@ for c in range(len(main)):
     if scored:
         sections.append({"section": "candidates", "main": c, "files": [items[i]["rel"] for _sc, i in scored],
                          "scores": [[round(sc[0], 4), round(sc[1], 4), round(sc[2], 4), sc[3]] for sc, _i in scored]})
+def nearest(i):  # [main index, CCIP closeness] - where a pending image would most likely belong, shown next to it for review
+    s = knn[pos[i]]
+    c = int(np.argmin(s))
+    return [c, round(float(s[c]), 4)]
+
+
 for mc in sorted(others, key=lambda m: -m["images"]):
-    sections.append({"section": "other", "files": mc["files"], "kind": mc["kind"], "gender": mc["gender"], "hair": mc["hair"]})
+    sections.append({"section": "other", "files": mc["files"], "kind": mc["kind"], "gender": mc["gender"], "hair": mc["hair"],
+                     "nearest": [nearest(rel_i[f]) for f in mc["files"]]})
 if multi:
-    sections.append({"section": "multi", "files": [items[i]["rel"] for _c, _s, i in sorted(multi)]})
+    m = sorted(multi)
+    sections.append({"section": "multi", "files": [items[i]["rel"] for _c, _s, i in m], "nearest": [nearest(i) for _c, _s, i in m]})
 if unknown:
-    sections.append({"section": "unknown", "files": [items[i]["rel"] for _c, _s, i in sorted(unknown)]})
+    u = sorted(unknown)
+    sections.append({"section": "unknown", "files": [items[i]["rel"] for _c, _s, i in u], "nearest": [nearest(i) for _c, _s, i in u]})
 files = [f for s in sections for f in s["files"]]
 result = {"params": vars(args), "crops": n, "characters": main, "sections": sections,
           "pending": {"images": len(files), "files": files}}

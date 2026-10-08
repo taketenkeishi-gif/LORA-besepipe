@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('loraDesktop',Object.freeze({
  comfy: (operation,payload={})=>ipcRenderer.invoke('lora:dataset-action','comfy-'+operation,payload),
  chooseComfyRoot:()=>ipcRenderer.invoke('lora:choose-comfy-root'),
  chooseVideo:()=>ipcRenderer.invoke('lora:choose-video'),
+ chooseVideoFolder:()=>ipcRenderer.invoke('lora:choose-video-folder'),
  revealPreset:id=>ipcRenderer.invoke('lora:reveal-preset',id??null),
  loadComfyWorkflow:path=>ipcRenderer.invoke('lora:load-comfy-workflow',{path}),
  compileComfyWorkflow:payload=>ipcRenderer.invoke('lora:compile-comfy-workflow',payload),
