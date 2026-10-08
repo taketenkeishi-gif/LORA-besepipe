@@ -176,19 +176,63 @@ def _add_instances(root: Path, data: dict) -> None:
         c["tier"] = "recommended" if c["images"] >= 60 and len(videos) >= 2 else ("candidate" if c["images"] >= 40 else "few")
 
 
-def _proposals(root: Path, clusters: list[dict], limit: int = 12, min_images: int = 40) -> list[dict]:
+def _member_view(m: dict) -> dict:
+    return {"job": m["job"], "folder": m["folder"], "video": m.get("video", ""), "images": m.get("images", 0), "sample": m.get("sample", [])[:4]}
+
+
+def _near_groups(c: dict, auto: list[dict], suggest: list[dict], limit: int = 24) -> list[dict]:
+    """Groups NOT in this proposal that might be the same character (for checking what was left out):
+    (1) the members a looser merge bar adds to it, (2) groups with the same hair and eye colour elsewhere."""
+    key = lambda m: (m["job"], m["folder"])
+    inside = {key(m) for m in c["members"]}
+    found: dict[tuple, dict] = {}
+    for s in suggest:
+        if inside & {key(m) for m in s["members"]}:
+            for m in s["members"]:
+                if key(m) not in inside:
+                    found.setdefault(key(m), {**_member_view(m), "why": "基準を少し緩めると結合される"})
+    if c.get("hair") and c.get("eyes"):
+        for o in auto:
+            if o["id"] != c["id"] and o.get("hair") == c["hair"] and o.get("eyes") == c["eyes"]:
+                for m in o["members"]:
+                    if key(m) not in inside:
+                        found.setdefault(key(m), {**_member_view(m), "why": "髪と瞳の色が同じ"})
+    return sorted(found.values(), key=lambda g: -g["images"])[:limit]
+
+
+def _proposals(root: Path, clusters: list[dict], suggest: list[dict] | None = None, limit: int = 12, min_images: int = 40) -> list[dict]:
     """Ready-to-create LoRA datasets, most frequent characters first: who (the merged groups), how many images, from how many
-    videos, and which instances (merged outfits) it would get."""
+    videos, and which instances (merged outfits) it would get - plus what to check: every member group, and near groups left out."""
     ranked = sorted((c for c in clusters if c["images"] >= min_images), key=lambda c: -(c["images"] * (1 + 0.25 * (c.get("videos", 1) - 1))))
     out = []
     for c in ranked[:limit]:
         inst, rest = _instance_plan(root, c["members"], MIN_INSTANCE_IMAGES)
         name = " ".join(x for x in (c.get("hair", ""), c.get("eyes", "")) if x) or f"キャラ{c['id']}"
         out.append({"cluster": c["id"], "name": name, "images": c["images"], "videos": c.get("videos", 1), "video_names": c.get("video_names", []),
-                    "groups": c["groups"], "hair": c.get("hair", ""), "eyes": c.get("eyes", ""), "members": [{"job": m["job"], "folder": m["folder"]} for m in c["members"]],
+                    "groups": c["groups"], "hair": c.get("hair", ""), "eyes": c.get("eyes", ""),
+                    "members": [_member_view(m) for m in sorted(c["members"], key=lambda m: -m.get("images", 0))],
+                    "near": _near_groups(c, clusters, suggest or []),
                     "instances": [{k: e[k] for k in ("label", "images", "videos", "sample")} for e in inst], "character_only_images": rest,
                     "min_instance_images": MIN_INSTANCE_IMAGES})
     return out
+
+
+class Feedback(BaseModel):
+    cluster: int
+    kept: list[str] = []
+    excluded: list[str] = []   # "job/folder" judged NOT this character
+    added: list[str] = []      # "job/folder" judged to be this character although left out
+    note: str = ""
+
+
+@router.post("/feedback")
+def feedback(project_id: int, payload: Feedback):
+    """The user's judgement of a proposal = ground truth for measuring and tuning the linker (precision: excluded, recall: added)."""
+    root = _jobs_root(project_id)
+    rec = {"at": time.time(), **payload.model_dump()}
+    with (root / "_links_feedback.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    return {"saved": True}
 
 
 @router.get("/result")
@@ -201,7 +245,7 @@ def result(project_id: int):
             data[tag] = json.loads(p.read_text(encoding="utf-8"))
             _add_instances(root, data[tag])
     if "auto" in data:
-        data["proposals"] = _proposals(root, data["auto"]["clusters"])
+        data["proposals"] = _proposals(root, data["auto"]["clusters"], (data.get("suggest") or {}).get("clusters", []))
     with _state_lock:
         st = dict(_state)
     return {"state": st, **data}

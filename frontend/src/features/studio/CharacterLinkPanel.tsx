@@ -9,14 +9,31 @@ type Instance={label:string;images:number;sample:string[]};
 type Cluster={id:number;groups:number;images:number;hair:string;eyes:string;members:LinkMember[];instances?:Instance[];videos?:number;video_names?:string[];tier?:'recommended'|'candidate'|'few'};
 type Metrics={groups:number;jobs:number;clusters:number;multi_group_clusters:number;merged_conflicts_must_be_0:number;hair_agreement_inside_merged_clusters:number|null;merge_bar:number};
 type PropInstance={label:string;images:number;videos:number;sample:string[]};
-type Proposal={cluster:number;name:string;images:number;videos:number;video_names:string[];groups:number;hair:string;eyes:string;members:{job:string;folder:string}[];instances:PropInstance[];character_only_images:number;min_instance_images:number};
+type PropGroup={job:string;folder:string;video:string;images:number;sample:string[];why?:string};
+type Proposal={cluster:number;name:string;images:number;videos:number;video_names:string[];groups:number;hair:string;eyes:string;members:PropGroup[];near:PropGroup[];instances:PropInstance[];character_only_images:number;min_instance_images:number};
+
+// One group (one character of one video) with its thumbnails and an include checkbox: the unit the user judges.
+function ReviewRow({pid,g,on,onChange}:{pid:number;g:PropGroup;on:boolean;onChange:(v:boolean)=>void}){
+ return <Flex gap="2" align="center" style={{minWidth:0,opacity:on?1:.55}}>
+  <Checkbox checked={on} onCheckedChange={v=>onChange(v===true)} aria-label={`${g.video} ${g.folder}を含める`}/>
+  <Text size="1" style={{width:130,flex:'0 0 auto',overflowWrap:'anywhere'}}>{g.video}<br/><span style={{color:'var(--gray-10)'}}>{g.images}枚{g.why?`・${g.why}`:''}</span></Text>
+  <Flex gap="1" style={{overflowX:'auto'}}>{g.sample.map(f=><img key={f} src={img(pid,f)} alt="" loading="lazy" style={{width:72,height:72,objectFit:'cover',borderRadius:4,flex:'0 0 auto'}}/>)}</Flex></Flex>;
+}
 type Result={state:{running:boolean;error:string;log:string};auto?:{clusters:Cluster[];metrics:Metrics};suggest?:{clusters:Cluster[];metrics:Metrics};proposals?:Proposal[]};
 
 // One ready-to-make LoRA: who, how many images, and which instances (same outfit across videos = one instance).
 function ProposalCard({pid,p,rank,similar,busy,onCreate,onAdjust}:{pid:number;p:Proposal;rank:number;similar:(Proposal&{rank:number})[];busy:boolean;onCreate:(name:string,members:{job:string;folder:string}[])=>void;onAdjust:(members:{job:string;folder:string}[])=>void}){
  const [name,setName]=useState(p.name),[withSimilar,setWithSimilar]=useState(false);
- const members=withSimilar?[...p.members,...similar.flatMap(s=>s.members)]:p.members;
- const images=p.images+(withSimilar?similar.reduce((a,s)=>a+s.images,0):0);
+ const [off,setOff]=useState<Set<string>>(new Set()),[added,setAdded]=useState<Set<string>>(new Set()),[saved,setSaved]=useState('');
+ const all=[...p.members,...(withSimilar?similar.flatMap(s=>s.members):[]),...p.near.filter(g=>added.has(key(g)))];
+ const uniq=[...new Map(all.map(g=>[key(g),g])).values()];
+ const members=uniq.filter(g=>!off.has(key(g)));
+ const images=members.reduce((a,g)=>a+g.images,0);
+ const flip=(set:Set<string>,setter:(s:Set<string>)=>void,k:string,v:boolean)=>{const n=new Set(set);v?n.add(k):n.delete(k);setter(n);setSaved('');};
+ async function saveJudgement(){
+  try{await apiPost(`${base(pid)}/feedback`,{cluster:p.cluster,kept:members.map(key),excluded:p.members.filter(g=>off.has(key(g))).map(key),added:[...added]});setSaved(`評価を保存しました（除外 ${p.members.filter(g=>off.has(key(g))).length}・追加 ${added.size}）`);}
+  catch(e){setSaved(e instanceof Error?e.message:String(e));}
+ }
  return <div style={{border:'1px solid var(--gray-6)',borderRadius:8,padding:10,minWidth:0}}>
   <Flex gap="2" align="center" wrap="wrap"><Badge color="green">提案 {rank}</Badge><Text size="2" weight="bold">{p.images}枚・{p.videos}本の動画に登場</Text><Text size="1" color="gray">{p.hair||'髪色不明'} / {p.eyes||'瞳色不明'}・{p.groups}グループ</Text></Flex>
   <Text as="div" size="1" color="gray" mt="1">インスタンス（衣装ごとのトリガー）{p.instances.length}種類・どれにも入らない {p.character_only_images}枚はキャラ本体のトリガーだけで学習（{p.min_instance_images}枚未満の衣装・衣装不明）</Text>
@@ -27,9 +44,17 @@ function ProposalCard({pid,p,rank,similar,busy,onCreate,onAdjust}:{pid:number;p:
    {!p.instances.length&&<Text size="1" color="gray">衣装ごとに十分な枚数がないため、キャラ本体のみのLoRAになります。</Text>}</Flex>
   {similar.length>0&&<Flex gap="2" align="center" mt="1"><Checkbox checked={withSimilar} onCheckedChange={v=>setWithSimilar(v===true)} aria-label="似た候補もまとめる"/>
    <Text size="1">髪と瞳が同じ候補（提案 {similar.map(s=>s.rank).join('・')}、計 {similar.reduce((a,s)=>a+s.images,0)}枚）も同じキャラとしてまとめる</Text></Flex>}
+  <details style={{marginTop:8}}><summary style={{cursor:'pointer'}}><Text size="2" weight="medium">中身を確認・調整（含まれる {uniq.length}グループ／近いが入っていない {p.near.length}グループ）</Text></summary>
+   <Text as="p" size="1" color="gray" mt="1">別キャラが混ざっていたらチェックを外し、同じキャラなのに入っていないものはチェックを入れてください。この判断は結合の精度を測る正解として保存され、自動の結合の改善に使います。</Text>
+   <Text as="div" size="2" weight="bold" mt="2">含まれるグループ（別キャラなら外す）</Text>
+   <Flex direction="column" gap="2" mt="1">{uniq.map(g=><ReviewRow key={key(g)} pid={pid} g={g} on={!off.has(key(g))} onChange={v=>flip(off,setOff,key(g),!v)}/>)}</Flex>
+   {p.near.length>0&&<><Text as="div" size="2" weight="bold" mt="3">近いが入っていないグループ（同じキャラなら入れる）</Text>
+    <Flex direction="column" gap="2" mt="1">{p.near.filter(g=>!added.has(key(g))).map(g=><ReviewRow key={key(g)} pid={pid} g={g} on={false} onChange={v=>flip(added,setAdded,key(g),v)}/>)}</Flex></>}
+   <Flex gap="2" align="center" mt="2"><Button size="1" variant="soft" onClick={()=>void saveJudgement()}>この判断を評価として保存</Button><Text size="1" color="gray">{saved}</Text></Flex>
+  </details>
   <Flex gap="2" align="center" wrap="wrap" mt="2">
    <TextField.Root size="1" style={{width:200}} aria-label="新しいキャラの名前" value={name} onChange={e=>setName(e.target.value)}/>
-   <Button size="1" disabled={busy||!name.trim()} onClick={()=>onCreate(name.trim(),members)}>{busy?<Spinner/>:null}この提案で新規プロジェクトを作る（{images}枚）</Button>
+   <Button size="1" disabled={busy||!name.trim()||!members.length} onClick={()=>{void saveJudgement();onCreate(name.trim(),members);}}>{busy?<Spinner/>:null}この内容で新規プロジェクトを作る（{images}枚・{members.length}グループ）</Button>
    <Button size="1" variant="soft" color="gray" onClick={()=>onAdjust(members)}>下で足し引きする</Button></Flex>
  </div>;
 }
