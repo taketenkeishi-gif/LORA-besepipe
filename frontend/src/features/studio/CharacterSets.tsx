@@ -1,4 +1,4 @@
-import {useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
+import {Fragment,useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {Button,Select,Spinner,Text} from '@radix-ui/themes';
 import {Plus,Trash2,Undo2} from 'lucide-react';
@@ -9,7 +9,7 @@ import './character-sets.css';
 // Select images (click / ctrl / shift / drag-box free), drag them onto a character, the bin or "+"; drag a character onto
 // another to merge; Delete = to the bin; Ctrl+Z = undo; double-click = enlarge; double-click a name = rename.
 type Source={folder:string;name:string;videos:number;set_id:string;characters:number|null;computing:boolean};
-type Char={id:number;name:string;count:number;cover:string[]};
+type Char={id:number;name:string;count:number;cover:string[];pending?:boolean;section?:string};
 type SetState={set_id:string;status:'ready'|'computing'|'error';error?:string;folder?:string;set_folder?:string;videos?:number;characters?:Char[];excluded?:number;can_undo?:boolean};
 const IMG='application/x-lora-images',CHAR='application/x-lora-character';
 const LAST='charsets:last-folder';
@@ -95,14 +95,14 @@ export default function CharacterSets(){
   :set.status==='error'?<div className="cs-wait"><Text size="2" color="red">{set.error}</Text></div>
   :<div className="cs-body">
    <div className="cs-list">
-    {chars.map(c=><div key={c.id} className={`cs-char${String(c.id)===current?' on':''}${over===String(c.id)?' over':''}`} draggable
+    {chars.map((c,k)=><Fragment key={c.id}>{c.pending&&!chars[k-1]?.pending&&<div className="cs-section">保留</div>}<div className={`cs-char${c.pending?' held':''}${String(c.id)===current?' on':''}${over===String(c.id)?' over':''}`} draggable
       onDragStart={e=>{e.dataTransfer.setData(CHAR,String(c.id));e.dataTransfer.effectAllowed='move';}}
       onClick={()=>setCurrent(String(c.id))} {...target(String(c.id))}>
      {c.cover[0]&&<img src={thumb(c.cover[0])} alt="" loading="lazy" draggable={false}/>}
      {renaming===c.id?<input autoFocus defaultValue={c.name} onBlur={e=>{setRenaming(null);if(e.target.value.trim()&&e.target.value!==c.name)void act('/rename',{id:c.id,name:e.target.value});}}
        onKeyDown={e=>{if(e.key==='Enter')(e.target as HTMLInputElement).blur();if(e.key==='Escape')setRenaming(null);}}/>
       :<span className="cs-name" onDoubleClick={e=>{e.stopPropagation();setRenaming(c.id);}}>{c.name}</span>}
-     <span className="cs-count">{c.count}</span></div>)}
+     <span className="cs-count">{c.count}</span></div></Fragment>)}
    </div>
    <div className="cs-side">
     <div className={`cs-drop${over==='new'?' over':''}`} {...target('new')} title="ここにドロップで新しいキャラ"><Plus size={16}/></div>

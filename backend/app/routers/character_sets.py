@@ -100,7 +100,7 @@ def _save(d: Path, state: dict, history: bool = True) -> None:
     svc.write_json(d / "characters.json", state)
 
 
-NAMING = 4
+NAMING = 5
 HAIR_AGREE = 0.6   # a hair colour names the group only when this share of its images carries that colour tag
 FACE_SHARE = 0.35  # ...and this share shows a face (crop view close/upper/full); below it the group is parts, props, mascots
 _tags: dict[str, list[str]] = {}
@@ -180,30 +180,50 @@ def _what(root: Path, images: list[str]) -> str:
 def _relabel(root: Path, s: dict) -> dict:
     """Name automatically named groups from their current images; real characters first (largest first), the pending pile last.
     Characters that would get the same name are told apart as A, B, C … (largest first)."""
-    ranked = []
-    for c in s["characters"]:
-        if c.get("pending"):
-            rank, label = 3, PENDING_NAME
-        elif c.get("auto_name", True):
-            rank, label = _describe(root, c["images"])
-            label = label or "キャラ"
-        else:
-            rank, label = 0, c["name"]
-        ranked.append((rank, -len(c["images"]), c, label))
-    ranked.sort(key=lambda r: (r[0], r[1]))
-    counts: dict[str, int] = {}
-    for _rank, _n, c, label in ranked:
-        if c.get("auto_name", True) and not c.get("pending"):
+    def letters(rows):  # same label -> A, B, C … (rows already in display order)
+        counts: dict[str, int] = {}
+        for _k, c, label in rows:
             counts[label] = counts.get(label, 0) + 1
-    seen: dict[str, int] = {}
-    for _rank, _n, c, label in ranked:
-        if c.get("pending"):
-            c["name"] = PENDING_NAME
-        elif c.get("auto_name", True):
+        seen: dict[str, int] = {}
+        for _k, c, label in rows:
+            if c.get("auto_name") is False:  # a name the user typed is kept
+                continue
             seen[label] = seen.get(label, 0) + 1
             c["name"] = label if counts[label] == 1 else f"{label} {chr(64 + seen[label]) if seen[label] <= 26 else seen[label]}"
             c["auto_name"] = True
-    s["characters"] = [r[2] for r in ranked]
+
+    mains, held = [], []
+    for c in s["characters"]:
+        (held if c.get("pending") else mains).append(c)
+    rows = []
+    for c in mains:
+        if c.get("auto_name", True):
+            rank, label = _describe(root, c["images"])
+            rows.append(((rank, -len(c["images"])), c, label or "キャラ"))
+        else:
+            rows.append(((0, -len(c["images"])), c, None))
+    rows.sort(key=lambda r: r[0])
+    letters([r for r in rows if r[2] is not None])
+    position = {c["id"]: k for k, (_k, c, _l) in enumerate(rows)}
+    name_of = {c["id"]: c["name"] for c in mains}
+    # pending, in review order: candidates of each character (in the characters' order), other characters, several people, undecidable
+    order = {"candidates": 0, "other": 1, "multi": 2, "unknown": 3}
+    hrows = []
+    for c in held:
+        sec = c.get("section", "unknown")
+        if sec == "candidates" and c.get("parent") in name_of:
+            hrows.append(((0, position[c["parent"]], 0), c, f"{name_of[c['parent']]}の候補"))
+        elif sec == "candidates" or sec == "other":  # a candidate pile whose character was merged away is just another group
+            c["section"] = "other"
+            label = _describe(root, c["images"])[1] if c["images"] else "空"
+            hrows.append(((1, 0, -len(c["images"])), c, f"別キャラ：{label}"))
+        elif sec == "multi":
+            hrows.append(((2, 0, 0), c, "複数人が写っている"))
+        else:
+            hrows.append(((3, 0, 0), c, "判定不能" if "section" in c else PENDING_NAME))
+    hrows.sort(key=lambda r: r[0])
+    letters(hrows)
+    s["characters"] = [r[1] for r in rows] + [r[1] for r in hrows]
     s["naming"] = NAMING
     return s
 
@@ -215,9 +235,18 @@ def _from_clusters(root: Path, clusters: list[dict], prefix: str) -> dict:
 
 
 def _from_result(root: Path, result: dict, prefix: str) -> dict:
-    """crop_cluster.py output: sure characters, then one pending pile."""
+    """crop_cluster.py output: sure characters, then the pending sections (candidates per character, other characters,
+    several people in one picture, undecidable) - or one pending pile for older outputs."""
     chars = [{"id": i, "name": "", "auto_name": True, "images": [prefix + f for f in c["files"]]}
              for i, c in enumerate(result["characters"], 1)]
+    if "sections" in result:
+        for s in result["sections"]:
+            c = {"id": len(chars) + 1, "name": "", "auto_name": True, "pending": True, "section": s["section"],
+                 "images": [prefix + f for f in s["files"]]}
+            if s["section"] == "candidates":
+                c["parent"] = s["main"] + 1  # ids of main characters are 1..N in result order
+            chars.append(c)
+        return _relabel(root, {"version": 1, "characters": chars, "excluded": [], "next_id": len(chars) + 1, "clustering": result["params"]})
     chars.append({"id": len(chars) + 1, "name": PENDING_NAME, "auto_name": True, "pending": True,
                   "images": [prefix + f for f in result["pending"]["files"]]})
     return _relabel(root, {"version": 1, "characters": chars, "excluded": [], "next_id": len(chars) + 1, "clustering": result["params"]})
@@ -320,7 +349,7 @@ def get_set(set_id: str):
             _save(d, s, history=False)
     _start_warm(root, d, set_id)
     return {"set_id": set_id, "status": "ready", "folder": meta["folder"], "set_folder": str(d), "videos": len(meta["jobs"]),
-            "characters": [{"id": c["id"], "name": c["name"], "count": len(c["images"]), "cover": c["images"][:1]} for c in s["characters"] if c["images"]],
+            "characters": [{"id": c["id"], "name": c["name"], "count": len(c["images"]), "cover": c["images"][:1], "pending": bool(c.get("pending")), "section": c.get("section", "")} for c in s["characters"] if c["images"]],
             "excluded": len(s["excluded"]), "can_undo": any((d / "history").glob("*.json")) if (d / "history").is_dir() else False}
 
 

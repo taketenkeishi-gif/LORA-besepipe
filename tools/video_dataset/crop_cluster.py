@@ -31,6 +31,7 @@ ap.add_argument("--k", type=int, default=8)
 ap.add_argument("--core-quantile", type=float, default=0.9)
 ap.add_argument("--merge", type=float, default=0.20)
 ap.add_argument("--main-share", type=float, default=0.04)
+ap.add_argument("--candidate", type=float, default=0.19)  # nearer than this to a main character -> its candidates (else 判定不能)
 ap.add_argument("--kind-penalty", type=float, default=0.3)  # 0.3: girl/boy mix 0.6% -> 0.0% at the same pending share (2026-10-09 sweep)
 ap.add_argument("--report", action="store_true")
 args = ap.parse_args()
@@ -220,12 +221,99 @@ rank = {c: r for r, c in enumerate(order)}
 total_sure = sum(c["images"] for c in chars) or 1
 main = [c for c in chars if c["images"] / total_sure >= args.main_share]
 minor = [c for c in chars if c["images"] / total_sure < args.main_share]
-# pending: the minor groups first (largest first, each kept together), then the rest by nearest character, closest first
-pending.sort(key=lambda p: (rank.get(p[0], 0), p[1]))
-files = [f for c in minor for f in c["files"]] + [items[i]["rel"] for _c, _s, i in pending]
-result = {"params": vars(args), "crops": n, "characters": main,
-          "pending": {"images": len(files), "files": files, "minor_groups": [len(c["files"]) for c in minor]}}
-pending = [i for _c, _s, i in pending]
+
+# ---- everything not in a main character is sorted into sections, so pending is reviewed by kind, not as one pile ----
+rel_i = {it["rel"]: i for i, it in enumerate(items)}
+main_idx = [np.array([rel_i[f] for f in c["files"]]) for c in main]
+owner = np.full(n, -1)
+for c, m in enumerate(main_idx):
+    owner[m] = c
+rest = np.where(owner < 0)[0]
+pos = {int(i): k for k, i in enumerate(rest)}
+knn = np.stack([np.sort(P[np.ix_(rest, m)], axis=1)[:, :args.k].mean(1) for m in main_idx], 1) if main_idx else np.zeros((len(rest), 0))
+MULTI = {"2girls", "3girls", "multiple girls", "2boys", "multiple boys"}
+
+
+def is_multi(i):
+    t = set(items[i]["tags"])
+    return bool(t & MULTI) or ("1girl" in t and "1boy" in t)
+
+
+def fits(a, p):  # crop (or group) facts a do not contradict main character profile p
+    if a["kind"] != p["kind"]:
+        return False
+    if p["kind"] == "person" and a.get("gender") and p["gender"] and a["gender"] != p["gender"]:
+        return False
+    return True
+
+
+# the per-video grouping made when each video was processed: a crop whose in-video group mates are mostly character X
+votes = {}
+groups_in_video = defaultdict(list)
+for i, it in enumerate(items):
+    if it["group"]:
+        groups_in_video[(it["job"], it["group"])].append(i)
+for g, mem in groups_in_video.items():
+    cnt = Counter(int(owner[i]) for i in mem if owner[i] >= 0)
+    if sum(cnt.values()) >= 5:
+        top, k = cnt.most_common(1)[0]
+        if k / sum(cnt.values()) >= 0.7:
+            votes[g] = top
+
+recovered = defaultdict(list)
+cand_blocks = defaultdict(list)    # main -> [files of a minor group]
+cand_single = defaultdict(list)    # main -> [(score, i)]
+others, multi, unknown = [], [], []
+taken = set()
+# 1) minor sure groups: a block of candidates for the nearest main they fit, else a separate character
+for mc in minor:
+    mem = [rel_i[f] for f in mc["files"]]
+    taken.update(mem)
+    med = np.median(knn[[pos[i] for i in mem]], 0) if len(main_idx) else np.array([9.0])
+    order_m = np.argsort(med)
+    c = int(order_m[0])
+    gp = {"kind": mc["kind"], "gender": mc["gender"]}
+    if len(main_idx) and med[c] < args.candidate and fits(gp, main[c]):
+        cand_blocks[c].append(mc["files"])
+    else:
+        others.append(mc)
+# 2) single crops: recovered when two independent signals agree (in-video group vote AND nearest main), else sorted
+for i in rest:
+    i = int(i)
+    if i in taken:
+        continue
+    s = knn[pos[i]] if len(main_idx) else np.array([9.0])
+    c = int(np.argmin(s))
+    a = A[i]
+    vote = votes.get((items[i]["job"], items[i]["group"]))
+    if not is_multi(i) and vote == c and s[c] < args.candidate and fits(a, main[c]) and \
+            not (main[c]["kind"] == "person" and a["hair"] and main[c]["hair"] and main[c]["hair"] not in a["hair"]):
+        recovered[c].append(i)
+    elif is_multi(i):
+        multi.append((c, float(s[c]), i))
+    elif len(main_idx) and s[c] < args.candidate and fits(a, main[c]):
+        cand_single[c].append((float(s[c]), i))
+    else:
+        unknown.append((c, float(s[c]), i))
+
+# The two signals agreeing is still not proof (2026-10-09 check: back views and silhouettes of other people got in), so these
+# are not added to the character - they lead its candidates (most likely first), then the minor groups, then single crops.
+sections = []
+for c in range(len(main)):
+    first = sorted(recovered[c], key=lambda i: knn[pos[i], c])
+    files = [items[i]["rel"] for i in first] + [f for b in sorted(cand_blocks[c], key=len, reverse=True) for f in b] + \
+        [items[i]["rel"] for _s, i in sorted(cand_single[c])]
+    if files:
+        sections.append({"section": "candidates", "main": c, "files": files, "blocks": [len(b) for b in cand_blocks[c]]})
+for mc in sorted(others, key=lambda m: -m["images"]):
+    sections.append({"section": "other", "files": mc["files"], "kind": mc["kind"], "gender": mc["gender"], "hair": mc["hair"]})
+if multi:
+    sections.append({"section": "multi", "files": [items[i]["rel"] for _c, _s, i in sorted(multi)]})
+if unknown:
+    sections.append({"section": "unknown", "files": [items[i]["rel"] for _c, _s, i in sorted(unknown)]})
+files = [f for s in sections for f in s["files"]]
+result = {"params": vars(args), "crops": n, "characters": main, "sections": sections,
+          "pending": {"images": len(files), "files": files}}
 Path(args.out).write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
 
 if args.report:
@@ -235,7 +323,7 @@ if args.report:
         return round(sum((1 - c[share]) * c["images"] for c in main) / tot, 3) if tot else 0
 
     print(json.dumps({"sure_characters": len(main), "images_in_sure": sum(c["images"] for c in main),
-                      "pending": len(files), "pending_share": round(len(files) / n, 3), "minor_groups_in_pending": len(minor),
+                      "pending": len(files), "pending_share": round(len(files) / n, 3), "likely_candidates": sum(len(v) for v in recovered.values()), "sections": [(s["section"], len(s["files"])) for s in sections],
                       "mix_kind": impurity("kind", "kind_share"), "mix_gender": impurity("gender", "gender_share"),
                       "mix_hair": impurity("hair", "hair_share"),
                       "sizes": [c["images"] for c in main][:30]}, ensure_ascii=False), flush=True)
