@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .db import init_db
-from .routers import comfy_tag_proxy, dataset_files, dataset_video, dataset_video_chars, dataset_video_link, evaluation
+from .routers import character_sets, comfy_tag_proxy, dataset_files, dataset_video, dataset_video_chars, dataset_video_link, evaluation
 from .routers import basepipe, collector, dataset, debug, imgsearch, library, previews, preview_profiles, presets, project_file, projects, settings, system, tags, training, training_recipe, training_preset_files
 from .services.pixiv_auth import refresh_session_if_expired
 
@@ -40,6 +40,7 @@ app.include_router(dataset_files.router)
 app.include_router(dataset_video.router)
 app.include_router(dataset_video_chars.router)
 app.include_router(dataset_video_link.router)
+app.include_router(character_sets.router)
 app.include_router(comfy_tag_proxy.router)
 app.include_router(evaluation.router)
 app.include_router(tags.router)

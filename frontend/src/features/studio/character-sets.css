@@ -1,0 +1,24 @@
+.cs-root{display:flex;flex-direction:column;height:100%;min-height:0}
+.cs-bar{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--gray-a5)}
+.cs-grow{flex:1}
+.cs-error{padding:4px 10px}
+.cs-wait{display:flex;align-items:center;justify-content:center;gap:10px;flex:1}
+.cs-body{display:grid;grid-template-columns:240px 44px 1fr;flex:1;min-height:0}
+.cs-list{overflow-y:auto;border-right:1px solid var(--gray-a5)}
+.cs-char{display:flex;align-items:center;gap:8px;padding:4px 8px;cursor:pointer;border-left:3px solid transparent;user-select:none}
+.cs-char img{width:40px;height:40px;object-fit:cover;border-radius:4px;flex:0 0 auto}
+.cs-char .cs-name{flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cs-char input{flex:1;min-width:0;font:inherit;font-size:12px}
+.cs-char .cs-count{font-size:11px;color:var(--gray-11);font-variant-numeric:tabular-nums}
+.cs-char:hover{background:var(--gray-a3)}
+.cs-char.on{background:var(--accent-a4);border-left-color:var(--accent-9)}
+.cs-char.over,.cs-drop.over{background:var(--accent-a6);outline:2px dashed var(--accent-9);outline-offset:-2px}
+.cs-side{display:flex;flex-direction:column;gap:6px;padding:6px 4px;border-right:1px solid var(--gray-a5)}
+.cs-drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:64px;border:1px dashed var(--gray-a7);border-radius:6px;color:var(--gray-11);font-size:11px;cursor:pointer}
+.cs-drop.on{background:var(--red-a4);border-color:var(--red-8)}
+.cs-grid{overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:4px;padding:6px;align-content:start}
+.cs-grid-head{grid-column:1/-1}
+.cs-grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:4px;cursor:pointer;outline:3px solid transparent;user-select:none}
+.cs-grid img.sel{outline-color:var(--accent-9)}
+.cs-zoom{position:fixed;inset:0;z-index:2147483000;pointer-events:auto;background:rgba(8,10,12,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#eef0f2}
+.cs-zoom img{height:min(88vh,1200px);width:auto;max-width:94vw;object-fit:contain;border-radius:6px;background:#000}
