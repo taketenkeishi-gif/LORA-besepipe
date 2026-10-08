@@ -10,7 +10,7 @@ import './character-sets.css';
 // another to merge; Delete = to the bin; Ctrl+Z = undo; double-click = enlarge; double-click a name = rename.
 type Source={folder:string;name:string;videos:number;set_id:string;characters:number|null;computing:boolean};
 type Char={id:number;name:string;count:number;cover:string[]};
-type SetState={set_id:string;status:'ready'|'computing'|'error';error?:string;folder?:string;videos?:number;characters?:Char[];excluded?:number;can_undo?:boolean};
+type SetState={set_id:string;status:'ready'|'computing'|'error';error?:string;folder?:string;set_folder?:string;videos?:number;characters?:Char[];excluded?:number;can_undo?:boolean};
 const IMG='application/x-lora-images',CHAR='application/x-lora-character';
 const LAST='charsets:last-folder';
 
@@ -70,6 +70,8 @@ export default function CharacterSets(){
    <Select.Root value={folder||undefined} onValueChange={setFolder}><Select.Trigger aria-label="動画フォルダ" placeholder="動画フォルダ"/>
     <Select.Content>{sources.map(s=><Select.Item key={s.folder} value={s.folder}>{s.name}（{s.videos}本）</Select.Item>)}</Select.Content></Select.Root>
    {set?.status==='ready'&&<Text size="1" color="gray">{chars.length}キャラ</Text>}
+   {set?.status==='ready'&&<button type="button" className="cs-path" title="動画フォルダをエクスプローラーで開く" onClick={()=>void act('/reveal',{what:'videos'})}>{set.folder}</button>}
+   {set?.status==='ready'&&<button type="button" className="cs-path" title="編集の記録フォルダをエクスプローラーで開く" onClick={()=>void act('/reveal',{what:'set'})}>{set.set_folder}</button>}
    <span className="cs-grow"/>
    {busy&&<Spinner/>}
    <Button size="1" variant="soft" color="gray" disabled={!set?.can_undo||busy} onClick={undo} title="元に戻す（Ctrl+Z）"><Undo2 size={14}/></Button>

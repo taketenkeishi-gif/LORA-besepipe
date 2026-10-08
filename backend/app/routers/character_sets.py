@@ -178,7 +178,7 @@ def get_set(set_id: str):
     if not (d / "characters.json").is_file():
         return {"set_id": set_id, "status": "computing"}
     s = _load(d)
-    return {"set_id": set_id, "status": "ready", "folder": meta["folder"], "videos": len(meta["jobs"]),
+    return {"set_id": set_id, "status": "ready", "folder": meta["folder"], "set_folder": str(d), "videos": len(meta["jobs"]),
             "characters": [{"id": c["id"], "name": c["name"], "count": len(c["images"]), "cover": c["images"][:1]} for c in s["characters"] if c["images"]],
             "excluded": len(s["excluded"]), "can_undo": any((d / "history").glob("*.json")) if (d / "history").is_dir() else False}
 
@@ -273,6 +273,22 @@ def undo(set_id: str):
             raise HTTPException(409, "元に戻せる操作がありません")
         os.replace(h[-1], d / "characters.json")
     return {"ok": True}
+
+
+class RevealIn(BaseModel):
+    what: str  # "videos" | "set"
+
+
+@router.post("/{set_id}/reveal")
+def reveal(set_id: str, payload: RevealIn):
+    """Open the video folder or this set's folder in Explorer."""
+    _root, d = _set_dir(set_id)
+    meta = json.loads((d / "set.json").read_text(encoding="utf-8"))
+    target = Path(meta["folder"]) if payload.what == "videos" else d
+    if not target.is_dir():
+        raise HTTPException(404, f"フォルダが見つかりません: {target}")
+    os.startfile(str(target))  # noqa: S606 - local desktop app, path comes from our own set.json
+    return {"path": str(target)}
 
 
 def _image_path(root: Path, rel: str) -> Path:

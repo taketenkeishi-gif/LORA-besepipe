@@ -5,6 +5,9 @@ const URL_BASE=process.env.LORA_STUDIO_TEST_URL||'http://127.0.0.1:5175';
 if(new URL(URL_BASE).hostname!=='127.0.0.1')throw new Error('Desktop requires a loopback application URL');
 if(process.env.LORA_STUDIO_TEST_PROFILE)app.setPath('userData',process.env.LORA_STUDIO_TEST_PROFILE);
 app.setName('LoRA Studio');app.setAppUserModelId('Keishi.LoRAStudio');
+// Loopback-only DevTools port so the REAL desktop window can be inspected and captured without focus or input (tools/desktop_probe.mjs).
+app.commandLine.appendSwitch('remote-debugging-port',process.env.LORA_STUDIO_CDP_PORT||'9233');
+app.commandLine.appendSwitch('remote-allow-origins','http://127.0.0.1:9233');
 const WINDOW_TITLE=process.env.LORA_STUDIO_TEST_PROFILE?'LoRA Studio（検証用）':'LoRA Studio';
 const runtimeDir=process.env.LORA_STUDIO_TEST_PROFILE||path.join(ROOT,'.runtime');
 fs.mkdirSync(runtimeDir,{recursive:true});

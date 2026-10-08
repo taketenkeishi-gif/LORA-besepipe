@@ -22,3 +22,5 @@
 .cs-grid img.sel{outline-color:var(--accent-9)}
 .cs-zoom{position:fixed;inset:0;z-index:2147483000;pointer-events:auto;background:rgba(8,10,12,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#eef0f2}
 .cs-zoom img{height:min(88vh,1200px);width:auto;max-width:94vw;object-fit:contain;border-radius:6px;background:#000}
+.cs-path{background:none;border:none;padding:0 4px;font:inherit;font-size:11px;color:var(--gray-11);cursor:pointer;max-width:34%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+.cs-path:hover{color:var(--accent-11);text-decoration:underline}
