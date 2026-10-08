@@ -83,6 +83,7 @@ class TrainingStartIn(BaseModel):
     preview_steps: int | None = Field(default=None, ge=1, le=100)
     preview_cfg: float | None = Field(default=None, ge=0, le=30)
     training_memory_mode: str = Field(default="standard", pattern="^(low_vram|balanced|standard)$")
+    preview_gpu: str = Field(default="gpu0", pattern="^(gpu0|gpu1)$")  # gpu0 = RTX 3060 beside training, gpu1 = 3090 Ti (training pauses)
     queue_if_busy: bool = True
     dataset_snapshot_id: int | None = None
     preview_profile_snapshot_id: int | None = None

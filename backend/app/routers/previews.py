@@ -100,11 +100,16 @@ def render_checkpoint(checkpoint_id:int,payload:ComfyPreviewSettings):
         if any(j['status'] in ('running','pending') for j in jobs):raise HTTPException(409,'このエポックの生成が実行中または待機中です')
         conditions={'backend':'comfyui','source':'comfyui_user_preview','model_family':family,'resolution':int(p.get('resolution') or 1024),'width':int(p.get('width') or p.get('resolution') or 1024),'height':int(p.get('height') or p.get('resolution') or 1024),'sampler':p.get('sampler') or 'euler','scheduler':p.get('scheduler') or 'simple','steps':payload.steps if payload.steps is not None else p.get('steps',20),'cfg':payload.cfg if payload.cfg is not None else p.get('cfg',5),'lora_strength':payload.lora_strength,'extra_loras':[r.model_dump() for r in payload.extra_loras],'preview_base_checkpoint_path':payload.base_checkpoint_path or cfg['base_checkpoint_path']}
         # Freeze old image paths/conditions before putting the same logical job back in queue.
+        # Each job previews one outfit (prompt_index): keep that outfit's trigger and tags, not one shared prompt for all
+        # (that made every job the same graph, and ComfyUI answered the 2nd and 3rd from its cache).
+        from ..training.runtime.preview_jobs import outfit_prompt_plan, outfit_prompt_for_job
+        plan=outfit_prompt_plan(conn,int(checkpoint['project_id']),cfg,p) if len(jobs)>1 else ([],{},{})
         for job in jobs:
             if job['status']=='succeeded' and job['output_path']:
                 conn.execute('INSERT INTO preview_history(checkpoint_id,job_id,slot,image_path,preview_snapshot_json) VALUES(?,?,?,?,?)',(checkpoint_id,job['id'],f"p{job['prompt_index']}_i{job['instance_index']}",job['output_path'],job['preview_snapshot_json']))
-            snapshot=_preview_snapshot_json(conn,project_id=checkpoint['project_id'],checkpoint_id=checkpoint_id,run_id=checkpoint['run_id'],epoch=checkpoint['epoch'],prompt=p['prompt'],negative_prompt=p.get('negative_prompt',''),seed=int(p.get('seed',42)),conditions_json=json.dumps(conditions),source='comfyui_user_preview',profile_snapshot_id=profile_id)
-            conn.execute("UPDATE preview_jobs SET status='pending',error_detail='',output_path='',prompt=?,negative_prompt=?,seed=?,conditions_json=?,preview_snapshot_json=? WHERE id=?",(p['prompt'],p.get('negative_prompt',''),int(p.get('seed',42)),json.dumps(conditions,ensure_ascii=False),snapshot,job['id']))
+            positive,negative=outfit_prompt_for_job(p['prompt'],p.get('negative_prompt',''),int(job['prompt_index']),plan)
+            snapshot=_preview_snapshot_json(conn,project_id=checkpoint['project_id'],checkpoint_id=checkpoint_id,run_id=checkpoint['run_id'],epoch=checkpoint['epoch'],prompt=positive,negative_prompt=negative,seed=int(p.get('seed',42)),conditions_json=json.dumps(conditions),source='comfyui_user_preview',profile_snapshot_id=profile_id)
+            conn.execute("UPDATE preview_jobs SET status='pending',error_detail='',output_path='',prompt=?,negative_prompt=?,seed=?,conditions_json=?,preview_snapshot_json=? WHERE id=?",(positive,negative,int(p.get('seed',42)),json.dumps(conditions,ensure_ascii=False),snapshot,job['id']))
         conn.commit();sync_checkpoint_status(conn,checkpoint_id)
     finally:conn.close()
     ensure_preview_wait_monitor()

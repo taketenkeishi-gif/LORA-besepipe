@@ -266,6 +266,29 @@ def set_interactive_sharing(run_id:int,payload:dict) -> dict:
     return {'run_id':run_id,'status':'queued','allow_interactive_gpu_sharing':True,'automatic_start':True}
 
 
+@router.put('/runs/{run_id}/preview-gpu')
+def set_preview_gpu(run_id:int,payload:dict) -> dict:
+    """Switch where this run's previews are made; the training process reads the marker at every epoch (takes effect from the next one)."""
+    gpu=payload.get('gpu')
+    if gpu not in ('gpu0','gpu1'):raise HTTPException(400,'gpu0（RTX 3060）か gpu1（RTX 3090 Ti）を指定してください')
+    from ..training.runtime import preview_gpu
+    from ..training.runtime.state import run_dir
+    conn=get_conn()
+    try:
+        row=conn.execute('SELECT status,project_id,config_json FROM training_runs WHERE id=?',(run_id,)).fetchone()
+        if row is None:raise HTTPException(404,'学習Runがありません')
+        cfg=json.loads(row['config_json'] or '{}');cfg['preview_gpu']=gpu
+        conn.execute('UPDATE training_runs SET config_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',(json.dumps(cfg,ensure_ascii=False),run_id))
+        project=conn.execute('SELECT training_config_json FROM projects WHERE id=?',(row['project_id'],)).fetchone()
+        draft=json.loads(project[0] or '{}');draft['preview_gpu']=gpu  # remembered for the next run too
+        conn.execute('UPDATE projects SET training_config_json=? WHERE id=?',(json.dumps(draft,ensure_ascii=False),row['project_id']));conn.commit()
+    finally:conn.close()
+    preview_gpu.set_mode(run_dir(run_id),gpu)
+    from ..training.runtime.preview_jobs import ensure_preview_wait_monitor
+    ensure_preview_wait_monitor()  # pending previews of this run may now be dispatchable
+    return {'run_id':run_id,'preview_gpu':gpu,'status':row['status']}
+
+
 def _training_wait_monitor() -> None:
     global _TRAINING_WAIT_MONITOR_THREAD
     try:
@@ -1750,6 +1773,7 @@ def start(payload: TrainingStartIn) -> dict:
         "advanced": payload.advanced,
         "queue_if_busy": payload.queue_if_busy,
         "training_memory_mode": payload.training_memory_mode,
+        "preview_gpu": payload.preview_gpu,
         "preview_backend": payload.preview_backend,
         "preview_lora_strength": payload.preview_lora_strength,
         "preview_extra_loras": [item.model_dump() for item in payload.preview_extra_loras],
@@ -2901,7 +2925,7 @@ def dataset_preview(project_id: int, train_data_dir: str = "") -> dict:
 
 _TRAINING_CONFIG_DRAFT_KEYS = {
     "allow_interactive_gpu_sharing", "advanced", "resume_checkpoint_id", "preview_backend", "preview_lora_strength", "preview_extra_loras",
-    "training_goal", "quality_preset", "training_memory_mode", "preview_base_checkpoint_path", "preview_steps", "preview_cfg",
+    "training_goal", "quality_preset", "training_memory_mode", "preview_gpu", "preview_base_checkpoint_path", "preview_steps", "preview_cfg",
     "preset_id", "epochs", "repeats", "alpha", "rank", "save_every_n_epochs",
     "output_name", "base_checkpoint_path", "train_data_dir", "reg_data_dir",
     "resolution", "learning_rate", "train_batch_size", "optimizer", "scheduler",

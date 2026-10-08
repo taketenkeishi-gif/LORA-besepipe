@@ -334,6 +334,8 @@ class AnimaBackend(TrainingBackend):
         conn.close()
 
         cmd = [python_exe, train_script, "--config_file", str(config_path)]
+        from ...runtime import preview_gpu
+        preview_gpu.set_mode(run_dir, str(cfg.get("preview_gpu") or "gpu0"))  # read by the epoch hook: 3060 = keep training while previews render
         if cfg.get("training_memory_mode", "standard") in ("low_vram","balanced","standard"):
             # Fraction is a cap, not a reservation. Allocations grow with actual demand.
             launcher = run_dir / "bounded_training_entry.py"

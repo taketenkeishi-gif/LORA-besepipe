@@ -218,21 +218,7 @@ def ensure_jobs_for_checkpoint(
         prompt_items = [prompt_items[0] if prompt_items else {}]
         instances_per_prompt = 1
         # One preview per training instance (outfit trigger): the same prompt/seed with only that outfit's trigger, so the outfits are comparable.
-        outfits = outfit_triggers(conn, project_id)
-        signature: dict[str, list[str]] = {}
-        negatives: dict[str, list[str]] = {}
-        user_outfits = frozen_payload.get("outfits") if isinstance(frozen_payload.get("outfits"), list) else None
-        if user_outfits:  # the user's own per-outfit choices win: which outfits to preview, and their marker tags
-            chosen = [o for o in user_outfits if o.get("enabled", True) and str(o.get("trigger", "")).strip()]
-            outfits = [str(o["trigger"]).strip() for o in chosen]
-            signature = {str(o["trigger"]).strip(): [str(t) for t in o.get("tags", [])] for o in chosen}
-            negatives = {str(o["trigger"]).strip(): [str(t) for t in o.get("negative_tags", [])] for o in chosen}
-        elif outfits:
-            snap_id = run_config.get("dataset_snapshot_id")
-            if snap_id is not None:
-                caps = [str(r["caption_at_snapshot"] or "") for r in conn.execute("SELECT caption_at_snapshot FROM basepipe_snapshot_entries WHERE snapshot_id=?", (snap_id,))]
-                signature = outfit_signature_tags(caps, outfits)
-                negatives = outfit_negative_tags(caps, outfits)
+        outfits, signature, negatives = outfit_prompt_plan(conn, project_id, run_config, frozen_payload)
         if outfits:
             prompt_items = [dict(prompt_items[0]) for _ in outfits]
     for p_idx, item in enumerate(prompt_items):
@@ -276,6 +262,36 @@ def ensure_jobs_for_checkpoint(
                 continue  # 既に存在する(冪等)
     conn.commit()
     return created
+
+
+def outfit_prompt_plan(conn, project_id: int, run_config: dict, profile_payload: dict) -> tuple[list[str], dict[str, list[str]], dict[str, list[str]]]:
+    """(outfit triggers to preview, marker tags per outfit, negative tags per outfit) - the same rule for epoch previews and re-renders."""
+    outfits = outfit_triggers(conn, project_id)
+    signature: dict[str, list[str]] = {}
+    negatives: dict[str, list[str]] = {}
+    user_outfits = profile_payload.get("outfits") if isinstance(profile_payload.get("outfits"), list) else None
+    if user_outfits:  # the user's own per-outfit choices win: which outfits to preview, and their marker tags
+        chosen = [o for o in user_outfits if o.get("enabled", True) and str(o.get("trigger", "")).strip()]
+        outfits = [str(o["trigger"]).strip() for o in chosen]
+        signature = {str(o["trigger"]).strip(): [str(t) for t in o.get("tags", [])] for o in chosen}
+        negatives = {str(o["trigger"]).strip(): [str(t) for t in o.get("negative_tags", [])] for o in chosen}
+    elif outfits:
+        snap_id = run_config.get("dataset_snapshot_id")
+        if snap_id is not None:
+            caps = [str(r["caption_at_snapshot"] or "") for r in conn.execute("SELECT caption_at_snapshot FROM basepipe_snapshot_entries WHERE snapshot_id=?", (snap_id,))]
+            signature = outfit_signature_tags(caps, outfits)
+            negatives = outfit_negative_tags(caps, outfits)
+    return outfits, signature, negatives
+
+
+def outfit_prompt_for_job(prompt: str, negative: str, prompt_index: int, plan: tuple[list[str], dict, dict]) -> tuple[str, str]:
+    """The prompt of the job that previews outfit #prompt_index (unchanged when there is no outfit plan)."""
+    outfits, signature, negatives = plan
+    if not outfits or prompt_index >= len(outfits):
+        return prompt, negative
+    trigger = outfits[prompt_index]
+    extra = [t for t in negatives.get(trigger, []) if t.casefold() not in negative.casefold()]
+    return prompt_for_outfit(prompt, outfits, trigger, signature), (", ".join([negative] + extra) if extra else negative)
 
 
 def outfit_triggers(conn, project_id: int) -> list[str]:
@@ -539,6 +555,12 @@ def retry_jobs(conn, job_ids: list[int]) -> int:
     return len(job_ids)
 
 
+def settings_for_comfy_root(conn) -> str:
+    row = conn.execute("SELECT value FROM app_settings WHERE key='comfyui_root'").fetchone()
+    from ...desktop_comfy import settings as comfy_settings
+    return str(row["value"]) if row and row["value"] else comfy_settings()["root"]
+
+
 def dispatch_pending_preview_jobs(conn, *, max_jobs: int | None = None) -> dict:
     # Checkpoint monitoring and the waiting worker share one serialized lane.
     if not _PREVIEW_DISPATCH_LOCK.acquire(blocking=False):
@@ -581,15 +603,25 @@ def _dispatch_pending_preview_jobs(conn, *, max_jobs: int | None = None) -> dict
         from .comfy_epoch_hook import active_window
         from .state import run_dir
         window=active_window(run_dir(run_id))
-        earlier_character_work = conn.execute(
+        from . import preview_gpu
+        on_3060 = preview_gpu.parallel(run_dir(run_id)) and str(job["preview_model_family"]) in ("anima", "sdxl")
+        if on_3060:
+            # The RTX 3060 has its own ComfyUI: training (3090 Ti) and other GPU1 work never block it.
+            state = preview_gpu.ensure_started(settings_for_comfy_root(conn))
+            if state != "ready":
+                conn.execute("UPDATE preview_jobs SET error_detail=? WHERE id=? AND status='pending'",
+                             ("3060のプレビュー用ComfyUIを起動しています" if state == "starting" else state, job["id"]))
+                conn.commit(); skipped_gpu_busy += 1
+                continue
+        earlier_character_work = None if on_3060 else conn.execute(
             "SELECT id, status FROM basepipe_character_generation_runs "
             "WHERE status IN ('waiting','waiting_qwen','queued','running','running_qwen') ORDER BY id LIMIT 1"
         ).fetchone()
-        earlier_training_work = conn.execute(
+        earlier_training_work = None if on_3060 else conn.execute(
             "SELECT id, status FROM training_runs WHERE status IN ('queued','training') AND id != ? ORDER BY id LIMIT 1",
             (run_id,),
         ).fetchone()
-        if window:
+        if window and not on_3060:
             earlier_character_work=conn.execute("SELECT id,status FROM basepipe_character_generation_runs WHERE status IN ('running','running_qwen') LIMIT 1").fetchone()
             earlier_training_work=conn.execute("SELECT id,status FROM training_runs WHERE status='training' AND id!=? LIMIT 1",(run_id,)).fetchone()
         if earlier_character_work is not None or earlier_training_work is not None:
@@ -635,7 +667,7 @@ def _dispatch_pending_preview_jobs(conn, *, max_jobs: int | None = None) -> dict
             else:
                 skipped_gpu_busy += 1
             continue
-        if proc_alive(run_id) and (not window or int(job["epoch"])>int(window["epoch"])):
+        if not on_3060 and proc_alive(run_id) and (not window or int(job["epoch"])>int(window["epoch"])):
             conn.execute("UPDATE preview_jobs SET error_detail=? WHERE id=? AND status='pending'",
                          ("学習終了後に生成：同じGPUでの同時実行を待機しています", job["id"]))
             conn.commit()
@@ -648,7 +680,8 @@ def _dispatch_pending_preview_jobs(conn, *, max_jobs: int | None = None) -> dict
         # Keep the durable Preview Job pending until the same admission and
         # ownership contract used by H3/Qwen succeeds.  Never fall back to
         # GPU0 and never turn temporary occupancy into a failed Preview.
-        if str(job["preview_model_family"]) == "anima":
+        # (Exception: a run explicitly switched to the 3060 preview instance, checked above.)
+        if str(job["preview_model_family"]) == "anima" and not on_3060:
             from ...desktop_comfy import inspect as inspect_bound_comfy
             try:
                 bound=inspect_bound_comfy({})
@@ -732,7 +765,8 @@ def _dispatch_pending_preview_jobs(conn, *, max_jobs: int | None = None) -> dict
         conn.execute('BEGIN IMMEDIATE')
         active_training=conn.execute("SELECT id FROM training_runs WHERE status='training'").fetchall()
         current_window=active_window(run_dir(run_id))
-        if any(int(r['id'])!=run_id or not current_window for r in active_training) or conn.execute("SELECT 1 FROM preview_jobs WHERE status='running' AND id!=? LIMIT 1",(job['id'],)).fetchone():
+        gpu_lane_busy = False if on_3060 else any(int(r['id'])!=run_id or not current_window for r in active_training)  # the 3060 lane is not the training GPU
+        if gpu_lane_busy or conn.execute("SELECT 1 FROM preview_jobs WHERE status='running' AND id!=? LIMIT 1",(job['id'],)).fetchone():
             conn.rollback();skipped_gpu_busy+=1;continue
         claimed = conn.execute(
             "UPDATE preview_jobs SET status='running', started_at=CURRENT_TIMESTAMP, "
@@ -757,7 +791,7 @@ def _dispatch_pending_preview_jobs(conn, *, max_jobs: int | None = None) -> dict
             sampler=str(recorded_conditions.get("sampler") or spec.preview_sampler),
             cfg=float(recorded_conditions["cfg"]) if recorded_conditions.get("cfg") is not None else spec.preview_cfg,
             steps=int(recorded_conditions.get("steps") or spec.preview_steps),
-            extra=recorded_conditions,
+            extra={**recorded_conditions, **({"comfy_url": preview_gpu.PREVIEW_URL} if on_3060 else {})},
         )
         try:
             results = generate_preview_safe('comfyui' if recorded_conditions.get('backend')=='comfyui' else spec.preview_backend, request)
@@ -853,6 +887,8 @@ def _preview_wait_monitor_cycle() -> dict:
     try:
         pending = int(conn.execute("SELECT COUNT(*) FROM preview_jobs WHERE status='pending'").fetchone()[0])
         if pending == 0:
+            from . import preview_gpu
+            preview_gpu.stop_if_idle(conn)  # checked every monitor cycle, not only when a queue drains
             return {"pending": 0, "processed": 0, "skipped_gpu_busy": 0}
         result = dispatch_pending_preview_jobs(conn, max_jobs=1)
         remaining = int(conn.execute("SELECT COUNT(*) FROM preview_jobs WHERE status='pending'").fetchone()[0])
@@ -876,6 +912,8 @@ def _release_managed_preview_runtime_if_idle() -> dict:
         training_work = conn.execute(
             "SELECT 1 FROM training_runs WHERE status IN ('queued','training') LIMIT 1"
         ).fetchone()
+        from . import preview_gpu
+        preview_gpu.stop_if_idle(conn)  # the RTX 3060 preview instance: stopped after 5 idle minutes, never left resident
     finally:
         conn.close()
     if character_work is not None or training_work is not None or preview_work is not None:
@@ -899,6 +937,10 @@ def _preview_wait_monitor() -> None:
                     _release_managed_preview_runtime_if_idle()
                 except Exception as exc:  # noqa: BLE001 - ownership checks fail closed
                     logger.warning("preview managed runtime release skipped: %s", exc)
+                from . import preview_gpu
+                if preview_gpu.alive():  # keep watching until the RTX 3060 instance has been stopped as idle
+                    time.sleep(PREVIEW_WAIT_POLL_SECONDS)
+                    continue
                 return
             if int(result.get("processed", 0)) == 0:
                 time.sleep(PREVIEW_WAIT_POLL_SECONDS)

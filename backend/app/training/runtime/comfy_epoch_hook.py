@@ -36,6 +36,8 @@ def install(run_directory,run_id,backend_url):
             dtype={'bf16':torch.bfloat16,'fp16':torch.float16,'float':torch.float32}.get(args.save_precision,torch.float32)
             metadata={'ss_epoch':str(epoch),'ss_steps':str(global_step),'ss_network_module':str(args.network_module),'ss_network_dim':str(args.network_dim),'ss_network_alpha':str(args.network_alpha),'ss_base_model_version':'anima' if 'anima' in args.network_module else 'sdxl'}
             network.save_weights(str(checkpoint),dtype,metadata)
+        if (directory/'preview-parallel.json').is_file():  # previews run on the RTX 3060 beside training: do not pause (read every epoch)
+            print(f'COMFY_PREVIEW_PARALLEL epoch={epoch} step={global_step}',flush=True);return
         value={'state':'waiting','epoch':int(epoch),'step':int(global_step),'pid':os.getpid(),'process_created':psutil.Process().create_time(),'request_id':uuid.uuid4().hex,'deadline':time.time()+1800}
         path=directory/'comfy-preview-window.json';_write(path,value)
         print(f'COMFY_PREVIEW_WAIT epoch={epoch} step={global_step}',flush=True)

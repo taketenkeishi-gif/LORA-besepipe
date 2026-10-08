@@ -50,8 +50,13 @@ class ComfyUIPreviewProvider(PreviewProvider):
             from .... import desktop_comfy
             from ....db import get_conn
             from ....desktop_jobs import write_state
-            catalog=desktop_comfy.inspect({'include_schema':True})
-            if not any('RTX 3090 Ti' in d.get('name','') for d in catalog['devices']):return _skip('指定GPU1に接続していません')
+            url=request.extra.get('comfy_url')  # set only for a run switched to the RTX 3060 preview instance
+            if url:
+                from ....training.runtime import preview_gpu
+                preview_gpu.touch()  # any use counts: the idle stop must never cut a preview in progress
+            catalog=desktop_comfy.inspect({'include_schema':True,**({'url':url} if url else {})})
+            gpu='RTX 3060' if url else 'RTX 3090 Ti'
+            if not any(gpu in d.get('name','') for d in catalog['devices']):return _skip(f'プレビューの接続先が{gpu}ではありません')
             conn=get_conn()
             try:
                 row=conn.execute('SELECT config_json FROM training_runs WHERE id=?',(request.run_id,)).fetchone()
