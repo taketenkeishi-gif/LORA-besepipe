@@ -34,6 +34,7 @@ ap.add_argument("--main-share", type=float, default=0.04)
 ap.add_argument("--candidate", type=float, default=0.19)  # nearer than this to a main character -> its candidates (else 判定不能)
 ap.add_argument("--kind-penalty", type=float, default=0.3)  # 0.3: girl/boy mix 0.6% -> 0.0% at the same pending share (2026-10-09 sweep)
 ap.add_argument("--report", action="store_true")
+ap.add_argument("--absorb", type=float, default=-9.0)  # candidate score at or below this joins the character (-9 = none)
 ap.add_argument("--version", type=int, default=2)  # output format; sets made from an older one are rebuilt once (undoable)
 args = ap.parse_args()
 prefix = Path(args.feat)
@@ -327,9 +328,19 @@ def score(i, c):
 
 
 sections = []
+absorbed = 0
 for c in range(len(main)):
     members = [i for i in recovered[c]] + [rel_i[f] for b in cand_blocks[c] for f in b] + [i for _s, i in cand_single[c]]
     scored = sorted(((score(i, c), i) for i in members), key=lambda x: x[0][0])
+    # --absorb: candidates this close go straight into the character (a few strays accepted for less manual sorting,
+    # user decision 2026-10-09); the rest stay in "X の候補"
+    take = [i for sc, i in scored if sc[0] <= args.absorb]
+    if take:
+        main[c]["files"] = sorted(main[c]["files"] + [items[i]["rel"] for i in take])
+        main[c]["images"] = len(main[c]["files"])
+        main[c]["absorbed"] = len(take)
+        absorbed += len(take)
+        scored = [(sc, i) for sc, i in scored if sc[0] > args.absorb]
     if scored:
         sections.append({"section": "candidates", "main": c, "files": [items[i]["rel"] for _sc, i in scored],
                          "scores": [[round(sc[0], 4), round(sc[1], 4), round(sc[2], 4), sc[3]] for sc, _i in scored]})
@@ -360,7 +371,7 @@ if args.report:
         return round(sum((1 - c[share]) * c["images"] for c in main) / tot, 3) if tot else 0
 
     print(json.dumps({"sure_characters": len(main), "images_in_sure": sum(c["images"] for c in main),
-                      "pending": len(files), "pending_share": round(len(files) / n, 3), "likely_candidates": sum(len(v) for v in recovered.values()), "sections": [(s["section"], len(s["files"])) for s in sections],
+                      "pending": len(files), "pending_share": round(len(files) / n, 3), "likely_candidates": sum(len(v) for v in recovered.values()), "absorbed": absorbed, "other_char_would_absorb": [sum(1 for mc in others for f in mc["files"] if min(score(rel_i[f], c)[0] for c in range(len(main))) <= t) for t in (0.0, 0.03, 0.06, 0.09, 0.12)], "other_char_images": sum(len(mc["files"]) for mc in others), "sections": [(s["section"], len(s["files"])) for s in sections],
                       "mix_kind": impurity("kind", "kind_share"), "mix_gender": impurity("gender", "gender_share"),
                       "mix_hair": impurity("hair", "hair_share"),
                       "sizes": [c["images"] for c in main][:30]}, ensure_ascii=False), flush=True)
