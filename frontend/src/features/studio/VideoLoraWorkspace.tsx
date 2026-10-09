@@ -99,7 +99,7 @@ function LoraStep({set,picked,setPicked}:{set:Full;picked:Set<number>;setPicked:
  const chosen=(set.characters??[]).filter(c=>!c.pending&&picked.has(c.id));
  const [names,setNames]=useState<Record<number,string>>({});
  const [outfits,setOutfits]=useState<Record<number,(Outfit&{use:boolean})[]>>({});
- const [busy,setBusy]=useState(false),[error,setError]=useState(''),[made,setMade]=useState<{project_id:number;name:string;images:number;instances:{name:string;trigger:string;images:number}[]}[]>([]);
+ const [busy,setBusy]=useState(false),[error,setError]=useState(''),[made,setMade]=useState<{project_id:number;name:string;images:number;dataset_dir:string;instances:{name:string;trigger:string;images:number}[]}[]>([]);
  useEffect(()=>{for(const c of chosen)if(!outfits[c.id])void apiGet<{outfits:Outfit[]}>(`${base}/outfits?character=${c.id}`,60000).then(r=>setOutfits(o=>({...o,[c.id]:r.outfits.map(x=>({...x,use:x.name!=='その他の衣装'}))}))).catch(e=>setError(String(e)));},[chosen.map(c=>c.id).join(',')]);
  async function make(){setBusy(true);setError('');
   try{const r=await apiPost<{projects:typeof made}>(`${base}/compose`,{characters:chosen.map(c=>({id:c.id,name:(names[c.id]??c.name).trim()||c.name,outfits:outfits[c.id]??[]}))},'POST',undefined,600000);setMade(r.projects);}
@@ -118,7 +118,7 @@ function LoraStep({set,picked,setPicked}:{set:Full;picked:Set<number>;setPicked:
    {error&&<Text size="2" color="red">{error}</Text>}
   </div>
   {made.length>0&&<div className="vl-made">{made.map(m=><div key={m.project_id} className="vl-made-row">
-   <Text size="2" weight="bold">{m.name}</Text><Text size="1" color="gray">{m.images}枚・インスタンス {m.instances.length}（{m.instances.map(i=>`${i.trigger} ${i.name}`).join(' / ')||'なし'}）</Text>
+   <Text size="2" weight="bold">{m.name}</Text><Text size="1" color="gray">{m.images}枚・インスタンス {m.instances.length}（{m.instances.map(i=>`${i.trigger} ${i.name}`).join(' / ')||'なし'}）</Text><Text size="1" color="gray" title="データセットの保存先">{m.dataset_dir}</Text>
    <Button size="1" onClick={()=>window.dispatchEvent(new CustomEvent('open-project',{detail:{id:m.project_id}}))}>開いて学習へ</Button></div>)}</div>}
  </div>;
 }

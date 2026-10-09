@@ -694,9 +694,17 @@ def compose(set_id: str, payload: ComposeIn):
         with dataset_files.database_connection() as conn:
             name = _unique_project_name(conn, safe_project_name(ch.name))
         created = projects.create_project(ProjectCreate(name=name, project_type="character"))
+        # the dataset goes next to the user's other character datasets (e.g. Dataset/Character/Nanoha), not into the app folder;
+        # an existing folder of that name is never reused
+        dest_root, n = root / name, 1
+        while dest_root.exists():
+            n += 1
+            dest_root = root / f"{name}_{n}"
+        dest_root.mkdir(parents=True)
+        with dataset_files.database_connection() as conn:
+            conn.execute("UPDATE projects SET dataset_dir=? WHERE id=?", (str(dest_root), created.id))
         try:
             new_char = "ch01"
-            dest_root = Path(created.dataset_dir)
             instances, total, k = [], 0, 0
             for o in ch.outfits:
                 if not o.files:
@@ -728,8 +736,10 @@ def compose(set_id: str, payload: ComposeIn):
             with dataset_files.database_connection() as conn:
                 conn.execute("DELETE FROM projects WHERE id=?", (created.id,))
             shutil.rmtree(Path(created.base_dir), ignore_errors=True)
+            shutil.rmtree(dest_root, ignore_errors=True)  # made by this call just above, holds only what it copied
             raise
-        made.append({"project_id": created.id, "name": name, "images": total, "instances": instances, "concepts": len(concepts)})
+        made.append({"project_id": created.id, "name": name, "images": total, "instances": instances, "concepts": len(concepts),
+                     "dataset_dir": str(dest_root)})
     return {"projects": made}
 
 

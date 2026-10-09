@@ -153,12 +153,15 @@ if (ms !== null) {
   log('開いて学習へ（新しいタブ）', ms !== null, {ms, tab: await js(`document.querySelector('.wb-project-trigger[data-state=active]')?.textContent`), images_shown: await waitFor(`document.querySelectorAll('.wb-project-panel[data-state=active] .df-folder-tile, .wb-project-panel[data-state=active] .df-file').length>0`, 15000) !== null});
   await shot('09-opened');
   // cleanup: delete the test project, close its tab, undo the move
+  const dsdir = await js(`fetch('/api/projects').then(r=>r.json()).then(ps=>ps.find(x=>x.name==='検証用_自動削除')?.dataset_dir)`);
+  log('データセットの保存先', (dsdir || '').split(String.fromCharCode(92)).join('/').endsWith('/Dataset/Character/検証用_自動削除'), {dataset_dir: dsdir});
   const made = await js(`(async()=>{const ps=await fetch('/api/projects').then(r=>r.json());const p=ps.find(x=>x.name==='検証用_自動削除');if(!p)return 'none';const r=await fetch('/api/projects/'+p.id,{method:'DELETE'});return r.status})()`);
   await js(`(()=>{const b=[...document.querySelectorAll('.wb-close-tab')].find(b=>b.getAttribute('aria-label').startsWith('検証用_自動削除'));b&&b.click();return 1})()`);
   const set = await js(`(async()=>{const w=await fetch('/api/character-sets/workspaces').then(r=>r.json());return w.workspaces.find(x=>x.name==='アイのシナリオ').set_id})()`);
   await js(`fetch('/api/character-sets/'+encodeURIComponent(${JSON.stringify('')}+${JSON.stringify(set)})+'/undo',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.status)`);
   const after = await js(`fetch('/api/character-sets/'+encodeURIComponent(${JSON.stringify(set)})).then(r=>r.json()).then(s=>s.characters.filter(c=>!c.pending).map(c=>c.name+'='+c.count))`);
-  log('後片付け', made === 200, {project_deleted: made, mains_after_undo: after});
+  // the dataset folder is the user's place and survives a project delete: remove the one this test made
+  log('後片付け', made === 200, {project_deleted: made, mains_after_undo: after, dataset_folder_left: dsdir});
   await js(`(()=>{try{for(const k of Object.keys(localStorage))if(k.startsWith('videolora:picked:'))localStorage.removeItem(k)}catch{}return 1})()`);
 }
 fs.writeFileSync(`${shots}/flow.json`, JSON.stringify(out, null, 1));
